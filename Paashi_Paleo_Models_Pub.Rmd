@@ -35,9 +35,7 @@ library(ggthemes)
 #library(plotly)
 library(brms)
 
-#setwd("C:/Users/rsmey/OneDrive/Desktop/Work/R_Projects")
-
-#read.csv("ElevSSTs.csv") -> clim
+read.csv("Raw Data/ElevSSTs.csv") -> clim
 
 ```
 
@@ -235,8 +233,8 @@ mld_Longarma <- brm(elev ~ Seki_Int + Palmer_Int + Davis5 + arma(p = 1, q = 1, t
 summary(mld_Longarma)
 plot(mld_Longarma)
 pp_check(mld_Longarma, ndraws = 100)
-saveRDS(mld_Longarma, file = "mld_Longarma.rds")
-readRDS("mld_Longarma.rds") -> mld_Longarma
+saveRDS(mld_Longarma, file = "Models/mld_Longarma.rds")
+readRDS("Models/mld_Longarma.rds") -> mld_Longarma
 
 ##Longarma was best
 
@@ -255,7 +253,7 @@ mld_Longarmas <- brm(elev ~ s(Seki_Int) + s(Palmer_Int) + s(Davis5) + arma(p = 1
 summary(mld_Longarmas)
 plot(mld_Longarmas)
 pp_check(mld_Longarmas, ndraws = 100)
-saveRDS(mld_Longarmas, file = "mld_Longarmas.rds")
+saveRDS(mld_Longarmas, file = "Models/mld_Longarmas.rds")
 
 #linear interactions between variables
 mld_Longarmar <- brm(elev ~ Seki_Int:Palmer_Int:Davis5 + arma(p = 1, q = 1, time = Year_B2015), 
@@ -268,7 +266,7 @@ mld_Longarmar <- brm(elev ~ Seki_Int:Palmer_Int:Davis5 + arma(p = 1, q = 1, time
 summary(mld_Longarmar)
 plot(mld_Longarmar)
 pp_check(mld_Longarmar, ndraws = 100)
-saveRDS(mld_Longarmar, file = "mld_Longarmar.rds")
+saveRDS(mld_Longarmar, file = "Models/mld_Longarmar.rds")
 
 #gaussian processing
 ##note, gaussian processing allows you to model multiple factors as a "surface"; so, you could do gp(lat, long), or gp(lat, long, elev) for a 3 dimensional space. this takes an immensely long time to process, so we will not run it here.
@@ -289,7 +287,7 @@ mld_Longarma_sig <- brm(bf(elev ~ Seki_Int + Palmer_Int + Davis5 + arma(p = 1, q
   warmup = 1000,
   seed = 2025)
 
-saveRDS(mld_Longarma_sig, file = "mld_Longarma_sig.rds")
+saveRDS(mld_Longarma_sig, file = "Models/mld_Longarma_sig.rds")
 summary(mld_Longarma_sig)
 # remember that sigma summaries default to log. seems like seki crosses zero and has little effect, palmer has a positive effect, and davis has a negative effect.
 
@@ -305,7 +303,7 @@ mld_Longarma_alpha <- brm(bf(elev ~ Seki_Int + Palmer_Int + Davis5,
   warmup = 1000,
   seed = 2025)
 
-saveRDS(mld_Longarma_alpha, file = "mld_Longarma_alpha.rds")
+saveRDS(mld_Longarma_alpha, file = "Models/mld_Longarma_alpha.rds")
 summary(mld_Longarma_alpha)
 #looks like seki has little effect on variance but does drive elevations, palmer is strongly correlated with floods, and davis is correlated with droughts. This makes sense, as palmer is eastern equitorial, associated with el nino events.
 
@@ -336,9 +334,9 @@ Longarma_Predict$year_bp <- mld_Longarma$data$Year_B2015
 Longarma_Predict$elev_obs <- mld_Longarma$data$elev
 
 #create a csv that we can load later for plotting, rather than running this again
-write.csv(Longarma_Predict, "Longarma_Predict.csv", row.names = FALSE)
+write.csv(Longarma_Predict, "Processed Data/Longarma_Predict.csv", row.names = FALSE)
 #for later:
-read.csv("Longarma_Predict.csv") -> Longarma_Predict
+read.csv("Processed Data/Longarma_Predict.csv") -> Longarma_Predict
 
 ##Let's visualize the results quickly. We will do more in depth plotting later
 #plot light blue ribbon of lower and upper 95, dark blue line is mean, and gray "highlight" is actual values
@@ -364,9 +362,9 @@ as.data.frame(fitted(mld_Longarma, newdata = newdata_pred)) -> Longarma_Fitted
 Longarma_Fitted$year_bp <- newdata_pred$Year_B2015
 
 #save for future use
-write.csv(Longarma_Fitted, "Longarma_Fitted.csv", row.names = FALSE)
+write.csv(Longarma_Fitted, "Processed Data/Longarma_Fitted.csv", row.names = FALSE)
 
-Longarma_Fitted <- read.csv("Longarma_Fitted.csv")
+Longarma_Fitted <- read.csv("Processed Data/Longarma_Fitted.csv")
 
 #Plot: light blue fill for upper and lower bounds, dark blue for predicted mean
 ggplot(Longarma_Fitted, aes(x = year_bp)) +
@@ -402,9 +400,9 @@ Longarma_Epred$year_bp  <- newdata_pred$Year_B2015
 Longarma_Epred$elev_obs <- newdata_pred$elev  # optional but handy
 
 # Save to CSV for future use
-write.csv(Longarma_Epred, "Longarma_epred.csv", row.names = FALSE)
+write.csv(Longarma_Epred, "Processed Data/Longarma_epred.csv", row.names = FALSE)
 
-Longarma_Epred <- read.csv("Longarma_epred.csv", check.names = FALSE)
+Longarma_Epred <- read.csv("Processed Data/Longarma_epred.csv", check.names = FALSE)
 
 #plot to check
 ggplot(Longarma_Epred, aes(x = year_bp)) +
@@ -427,10 +425,10 @@ ggplot(Longarma_Epred, aes(x = year_bp)) +
 ```{r plotting results}
 
 ##Load data
-read.csv("Longarma_Predict.csv") -> Longarma_Predict # note that by "predict" we mean "predict for comparison to already observed values"
-read.csv("Longarma_Fitted.csv") -> Longarma_Fitted # note that by "fitted" we mean "now that the model is fitted, make predictions for new values"
-read.csv("Lake12All.csv") -> arch
-read.csv("Model_Outputs_Combined.csv") -> combo
+read.csv("Processed Data/Longarma_Predict.csv") -> Longarma_Predict # note that by "predict" we mean "predict for comparison to already observed values"
+read.csv("Processed Data/Longarma_Fitted.csv") -> Longarma_Fitted # note that by "fitted" we mean "now that the model is fitted, make predictions for new values"
+read.csv("Processed Data/Lake12All.csv") -> arch
+read.csv("Processed Data/Model_Outputs_Combined.csv") -> combo
 
 ##Start Plotting
 
