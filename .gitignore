@@ -3,9 +3,6 @@
 .Rdata
 .Rproj.user/
 
-# Large model files
-Models/*.rds
-
 # Temporary files
 *~
 .DS_Store
