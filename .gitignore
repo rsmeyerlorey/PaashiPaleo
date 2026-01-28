@@ -1,0 +1,15 @@
+# R and RStudio
+.Rhistory
+.Rdata
+.Rproj.user/
+
+# Large model files
+Models/*.rds
+
+# Temporary files
+*~
+.DS_Store
+Thumbs.db
+
+# Rendered output (regenerate from RMD)
+*.html
