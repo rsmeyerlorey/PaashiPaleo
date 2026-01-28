@@ -1,0 +1,464 @@
+---
+title: "Paashi_Paleo_Models_Pub"
+author: "Robin_ML"
+date: "2025-12-04"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Loading Packages
+```{r loading packages/data}
+
+#install.packages("ggstream")
+#install.packages("ggh4x")
+#install.packages("hrbrthemes")
+#install.packages("ggthemes")
+#install.packages("plotly")
+#install.packages("paletteer")
+#install.packages("brms")
+#install.packages("tidyverse")
+#install.packages("tidybayes")
+#install.packages("mgcv")
+
+library(tidyverse)
+library(tidybayes)
+library(paletteer)
+#library(ggh4x)
+library(ggplot2)
+library(ggthemes)
+#library(ggstream)
+#library(plotly)
+library(brms)
+
+#setwd("C:/Users/rsmey/OneDrive/Desktop/Work/R_Projects")
+
+#read.csv("ElevSSTs.csv") -> clim
+
+```
+
+## Checking Paleoclimate Data
+```{r plotting}
+
+### plot sea surface temperature data
+ggplot(clim, aes(x = Year_B2015)) +
+  #geom_point(aes(y = Isono_Int))+
+  geom_point(aes(y = Seki_Int)) + #NE Pacific / "California Margin"
+  geom_point(aes(y = Palmer_Int)) + #Western Equatorial Pacific
+  #geom_point(aes(y = Leduc_Int)) +
+  #geom_point(aes(y = Barron_Int)) +
+  #geom_point(aes(y = Davis1)) +
+  #geom_point(aes(y = Davis2)) +
+  #geom_point(aes(y = Davis3)) +
+  #geom_point(aes(y = Davis4)) +
+  geom_point(aes(y = Davis5)) + #sea of Okhotsk (NW near Bering)
+  #geom_point(aes(y = Davis6)) +
+  #geom_point(aes(y = Davis7)) +
+  #geom_point(aes(y = Davis8)) +
+  #ylim(5, 30) +
+  xlim(0, 20000)
+
+##Examine data
+ggplot(clim, aes(x = elev)) +
+  geom_histogram(bins = 300)
+#This gives a normal distribution, so no further action needed; we can use family = gaussian. The distribution may in fact be bimodal with two very close peaks near the center-- this may represent "drought" and "flood" periods, as truly average rainfall is rarity in California according to oral traditions. However, these peaks are close enough to treat as a single normal distribution; bimodal modelling produces bad results
+
+```
+
+## Create and Test Models
+```{r model testing}
+### running brms on paleoclimate datasets
+##model sea surface temperature relationships to elevation
+
+#first one to check is Isono. we will do all before combining
+mld_Isono <- brm(elev ~ Isono_Int,
+                 data = clim,
+                 family = gaussian(),
+                 chains = 3,
+                 iter = 3000,
+                 warmup = 1000)
+
+summary(mld_Isono)
+plot(mld_Isono)
+pp_check(mld_Isono, ndraws = 100)
+
+#model Seki
+mld_Seki <- brm(elev ~ Seki_Int,
+                 data = clim,
+                 family = gaussian(),
+                 chains = 3,
+                 iter = 3000,
+                 warmup = 1000)
+
+summary(mld_Seki)
+plot(mld_Seki)
+pp_check(mld_Seki, ndraws = 100)
+
+#model Palmer
+mld_Palmer <- brm(elev ~ Palmer_Int,
+                 data = clim,
+                 family = gaussian(),
+                 chains = 3,
+                 iter = 3000,
+                 warmup = 1000)
+
+summary(mld_Palmer)
+plot(mld_Palmer)
+pp_check(mld_Palmer, ndraws = 100)
+
+#model Leduc
+mld_Leduc <- brm(elev ~ Leduc_Int,
+                 data = clim,
+                 family = gaussian(),
+                 chains = 3,
+                 iter = 3000,
+                 warmup = 1000)
+
+summary(mld_Leduc)
+plot(mld_Leduc)
+pp_check(mld_Leduc, ndraws = 100)
+
+#model Barron
+mld_Barron <- brm(elev ~ Barron_Int,
+                 data = clim,
+                 family = gaussian(),
+                 chains = 3,
+                 iter = 3000,
+                 warmup = 1000)
+
+summary(mld_Barron)
+plot(mld_Barron)
+pp_check(mld_Barron, ndraws = 100)
+
+#model longest 3
+mld_Long <- brm(elev ~ Seki_Int + Palmer_Int + Davis5,
+                 data = clim,
+                 family = gaussian(),
+                 chains = 3,
+                 iter = 3000,
+                 warmup = 1000)
+
+summary(mld_Long)
+plot(mld_Long)
+pp_check(mld_Long, ndraws = 100)
+
+
+##Compare all of these using loo in the comparison section below; "Long" seems to be the best, with "combo" a close second. For "Long", note that Seki is NE Pacific and Palmer is Western Equatorial SSTs; Davis is sea of Okhotsk.
+```
+
+##Add Prior Year Influence
+```{r refining models}
+##Now that we have selected our SST sets with the best correlation to lake elevation, we want to see if other factors play in. Because this is a hydrological system, it is likely that the prior year can influence the next year.
+
+#first, let's treat the year BP as a random factor.
+clim$Year_F <- as.factor(clim$Year_B2015)
+
+mld_Combo_YR <- brm(elev ~ Isono_Int + Seki_Int + Palmer_Int + Leduc_Int + Barron_Int + (1 | Year_F),
+                 data = clim,
+                 family = gaussian(),
+                 chains = 3,
+                 iter = 3000,
+                 warmup = 1000)
+
+summary(mld_Combo_YR)
+plot(mld_Combo_YR)
+pp_check(mld_Combo_YR, ndraws = 100)
+
+## this model fails to converge, so let's move on to the more likely situation, the prior year influencing the next
+
+##first, let's check our "auto correlation function" or ACF, to see how correlated each year's value is to the prior year; this will help us design better models.
+
+#fix data for acf and pacf 
+clim <- clim[order(clim$Year_B2015), ] #make double sure clim is read in order of year
+y <- clim$elev
+y_complete <- stats::na.omit(y) #acf and pacf will not work if there are NAs
+
+# acf checks auto correlation to see how long a value can influence subsequent values. PACF (partial ACF) removes the overlap so you can see more clearly the direct influence of prior years.
+acf(y_complete, main = "ACF of elev (NAs dropped)")
+pacf(y_complete, main = "PACF of elev (NAs dropped)")
+
+#check longer to see if multi-decade patterns exist
+acf(y_complete, lag.max = 80, main = "ACF of residuals")
+pacf(y_complete, lag.max = 80, main = "PACF of residuals")
+
+#check periodogram to see if there are strong frequencies/periodicities in the data
+spec.pgram(y_complete, log = "no", main = "Periodogram")
+
+#looks like we are strongly correlated for 1 year prior in the PACF. So, in ACF, value is strongly correlated with prior values, slowly tapering until ~15 prior values.
+#periodicity around ~40 years backs up oral traditions, but is not necessarily strong enough to warrant adding fourier terms or seasonal arma.
+
+## now we can run our best elev ~ SST model, adding influence from prior years. There are two arguments for adding in auto-correlation to a model. ar(p=x) says that the current value is correlated with past VALUES for x number of years. ma(q=x) says that the current value is correlated with past SHOCKS, or large CHANGES in value from the expected/mean value, for x number of years. arma(p = , q = ) just combines both. We can determine our p and q values from our ACF and PACF results.
+
+#because we have a big spike in correlation for the previous year, plus a small correlation with the prior year in PACF; and a smooth taper in ACF, we can see that what matters most strongly is the VALUE of the prior year. If there were multiple spikes before taper in ACF, then we might pay more attention to our q value for ma().
+
+#given what we see here, we can probably be safe with ar(p = 1), but could also reasonably try arma(p = 1, q = 1). 
+
+##model Long with previous year effects
+#ar(p = 1) for long, smooth persistence, often used in hydrological models
+mld_Longar <- brm(elev ~ Seki_Int + Palmer_Int + Davis5 + ar(p = 1, time = Year_B2015), 
+                 data = clim,
+                 family = gaussian(),
+                 chains = 3,
+                 iter = 3000,
+                 warmup = 1000)
+
+summary(mld_Longar)
+plot(mld_Longar)
+pp_check(mld_Longar, ndraws = 100)
+
+
+#ma(q = 1) does the deviation from the mean matter more than the actual value? Let's check ma
+mld_Longma <- brm(elev ~ Seki_Int + Palmer_Int + Davis5 + ma(q = 1, time = Year_B2015), 
+                 data = clim,
+                 family = gaussian(),
+                 chains = 3,
+                 iter = 3000,
+                 warmup = 1000)
+
+summary(mld_Longma)
+plot(mld_Longma)
+pp_check(mld_Longma, ndraws = 100)
+
+#arma(p = 1, q = 1) combines to see if both matter.
+mld_Longarma <- brm(elev ~ Seki_Int + Palmer_Int + Davis5 + arma(p = 1, q = 1, time = Year_B2015), 
+                 data = clim,
+                 family = gaussian(),
+                 chains = 4,
+                 iter = 4000,
+                 warmup = 2000,
+                 seed = 2025)
+
+summary(mld_Longarma)
+plot(mld_Longarma)
+pp_check(mld_Longarma, ndraws = 100)
+saveRDS(mld_Longarma, file = "mld_Longarma.rds")
+readRDS("mld_Longarma.rds") -> mld_Longarma
+
+##Longarma was best
+
+##let's check for non-linear and more complex relationships
+
+#spline instead of linear
+mld_Longarmas <- brm(elev ~ s(Seki_Int) + s(Palmer_Int) + s(Davis5) + arma(p = 1, q = 1, time = Year_B2015), 
+                 data = clim,
+                 family = gaussian(),
+                 cores = 3,
+                 control = list(adapt_delta = .9),
+                 chains = 3,
+                 iter = 3000,
+                 warmup = 1000)
+
+summary(mld_Longarmas)
+plot(mld_Longarmas)
+pp_check(mld_Longarmas, ndraws = 100)
+saveRDS(mld_Longarmas, file = "mld_Longarmas.rds")
+
+#linear interactions between variables
+mld_Longarmar <- brm(elev ~ Seki_Int:Palmer_Int:Davis5 + arma(p = 1, q = 1, time = Year_B2015), 
+                 data = clim,
+                 family = gaussian(),
+                 chains = 3,
+                 iter = 3000,
+                 warmup = 1000)
+
+summary(mld_Longarmar)
+plot(mld_Longarmar)
+pp_check(mld_Longarmar, ndraws = 100)
+saveRDS(mld_Longarmar, file = "mld_Longarmar.rds")
+
+#gaussian processing
+##note, gaussian processing allows you to model multiple factors as a "surface"; so, you could do gp(lat, long), or gp(lat, long, elev) for a 3 dimensional space. this takes an immensely long time to process, so we will not run it here.
+
+## the original longarma linear model was still the best.
+
+##let's see if variance and flood frequency are influenced by SST
+#best linear model plus variance tested
+#note the bf() part, this is used if there are multiple parts in the model
+mld_Longarma_sig <- brm(bf(elev ~ Seki_Int + Palmer_Int + Davis5 + arma(p = 1, q = 1, time = Year_B2015),
+    # variance (sigma) model: does variability depend on SST?
+    sigma ~ Seki_Int + Palmer_Int + Davis5),
+  data   = clim,
+  family = gaussian(),
+  cores = 3,
+  chains = 3,
+  iter   = 3000,
+  warmup = 1000,
+  seed = 2025)
+
+saveRDS(mld_Longarma_sig, file = "mld_Longarma_sig.rds")
+summary(mld_Longarma_sig)
+# remember that sigma summaries default to log. seems like seki crosses zero and has little effect, palmer has a positive effect, and davis has a negative effect.
+
+#let's check alpha / skewness / correlation with results being on one side of the distribution
+mld_Longarma_alpha <- brm(bf(elev ~ Seki_Int + Palmer_Int + Davis5,
+    # right tail (alpha) model: do high elevations depend on SST?
+    alpha ~ Seki_Int + Palmer_Int + Davis5),
+  data   = clim,
+  family = skew_normal(), #allows us to check skew, but does slightly change other results
+  cores = 3,
+  chains = 3,
+  iter   = 3000,
+  warmup = 1000,
+  seed = 2025)
+
+saveRDS(mld_Longarma_alpha, file = "mld_Longarma_alpha.rds")
+summary(mld_Longarma_alpha)
+#looks like seki has little effect on variance but does drive elevations, palmer is strongly correlated with floods, and davis is correlated with droughts. This makes sense, as palmer is eastern equitorial, associated with el nino events.
+
+```
+
+##Comparing Models
+```{r compare models}
+##compare models
+loo(mld_Isono, mld_Seki, mld_Palmer, mld_Leduc, mld_Barron, mld_Combo, mld_Long, mld_Short, compare = TRUE)
+# in order best to worst: Combo, Long, Seki, Palmer, Short, Barron, Isono, Leduc
+
+# taking into account previous year value provides the best result; year as random factor fails to converge.
+loo(mld_Longarmas, mld_Longarma, mld_Longarmar, compare = TRUE)
+#Longarma is best
+```
+
+## Using Models to Predict Reality
+```{r predictions}
+## let's do an "out of sample" prediction using Longarma.
+#there are several ways to do a posterior prediction. posterior_predict() runs a full simulation based on a trained model, with thousands of draws, outputting every result. This is usually used to compare a model to actual observed results. predict() runs posterior_predict, but then just outputs the mean and upper/lower 95; it is most useful if you just want to go straight to plotting results. posterior_epred ("expected prediction") runs a simulation based on a trained model, gets the mean, then makes predictions based on the mean. This is typically used to make posterior predictions on large sets of new data, since it is significantly lighter than running a full posterior_predict, given that posterior_epred() is just relying on the mean of an already trained model, whereas posterior_predict() or predict() would run thousands of predictions on all the new data, then return the mean.Lastly, fitted() runs posterior_epred() and then summarizes it, much as predict does for posterior_predict.
+
+#First, let's use predict() to visualize how good the model is. This will not have new data, it is just to compare the model against observations
+
+as.data.frame(predict(mld_Longarma)) -> Longarma_Predict #outputs a data frame
+
+#add time and observed data
+Longarma_Predict$year_bp <- mld_Longarma$data$Year_B2015
+Longarma_Predict$elev_obs <- mld_Longarma$data$elev
+
+#create a csv that we can load later for plotting, rather than running this again
+write.csv(Longarma_Predict, "Longarma_Predict.csv", row.names = FALSE)
+#for later:
+read.csv("Longarma_Predict.csv") -> Longarma_Predict
+
+##Let's visualize the results quickly. We will do more in depth plotting later
+#plot light blue ribbon of lower and upper 95, dark blue line is mean, and gray "highlight" is actual values
+ggplot(Longarma_Predict, aes(x = year_bp)) +
+  geom_ribbon(aes(ymin = Q2.5, ymax = Q97.5), fill = "skyblue", alpha = 0.5) +
+  geom_line(aes(y = Estimate), color = "blue", linewidth = 1) +
+  geom_line(aes(y = elev_obs), color = "black", linewidth = 1.5, alpha = 0.4) +
+  labs(x = "Years Before Present", y = "Lake Elevation (MaSL)",title = "Observed vs. Modeled Lake Elevation") +
+  theme_minimal()
+
+##now let's run it back through time with "new data" from the rest of the climate dataset
+
+#Build clean "new data" for prediction
+newdata_pred <- clim %>%
+  select(Year_B2015, Seki_Int, Palmer_Int, Davis5, elev) %>%
+  filter(!is.na(Year_B2015), !is.na(Seki_Int), !is.na(Palmer_Int), !is.na(Davis5)) %>%
+  arrange(Year_B2015)
+
+# use fitted for efficiency. It will still take a very long time, so be sure to save the results afterwards.
+as.data.frame(fitted(mld_Longarma, newdata = newdata_pred)) -> Longarma_Fitted
+
+#add time
+Longarma_Fitted$year_bp <- newdata_pred$Year_B2015
+
+#save for future use
+write.csv(Longarma_Fitted, "Longarma_Fitted.csv", row.names = FALSE)
+
+Longarma_Fitted <- read.csv("Longarma_Fitted.csv")
+
+#Plot: light blue fill for upper and lower bounds, dark blue for predicted mean
+ggplot(Longarma_Fitted, aes(x = year_bp)) +
+  geom_ribbon(aes(ymin = Q2.5, ymax = Q97.5), fill = "skyblue", alpha = 0.5) +
+  #geom_line(aes(y = Estimate), color = "blue", linewidth = 1) +
+  geom_line(aes(y = Estimate), linewidth = 1) + 
+  #ylim(57, 64)+
+  labs(x = "Years Before Present", y = "Lake Elevation (MaSL)", title = "Out-of-sample Expected Elevation Through Time") +
+  theme_minimal()
+
+
+## if this turns out to be too heavy, we can limit the number of draws manually and then summarize it ourselves
+#posterior_epred(mld_Longar, newdata = newdata_pred, ndraws = X)
+
+epred <- posterior_epred(
+  mld_Longarma,
+  newdata = newdata_pred,
+  ndraws = 250)
+
+#summarize results manually
+summ_mat <- apply(
+  epred, 2,
+  function(x) c(
+    Estimate = mean(x),
+    Q2.5     = quantile(x, 0.025, names = FALSE),
+    Q97.5    = quantile(x, 0.975, names = FALSE)))
+
+# Turn into a data frame with one row per observation
+Longarma_Epred <- as.data.frame(t(summ_mat))
+
+# Add time and observed elevation
+Longarma_Epred$year_bp  <- newdata_pred$Year_B2015
+Longarma_Epred$elev_obs <- newdata_pred$elev  # optional but handy
+
+# Save to CSV for future use
+write.csv(Longarma_Epred, "Longarma_epred.csv", row.names = FALSE)
+
+Longarma_Epred <- read.csv("Longarma_epred.csv", check.names = FALSE)
+
+#plot to check
+ggplot(Longarma_Epred, aes(x = year_bp)) +
+  geom_ribbon(aes(ymin = Q2.5, ymax = Q97.5),
+              fill = "skyblue", alpha = 0.4) +
+  geom_line(aes(y = Estimate),
+            color = "blue", linewidth = 1) +
+  geom_line(aes(y = elev_obs),
+            color = "black", linewidth = 0.8, alpha = 0.5) +
+  labs(x = "Years Before Present",
+       y = "Lake Elevation (m)",
+       title = "Expected Lake Elevation with 95% Credible Intervals") +
+  theme_minimal()
+###
+
+
+```
+
+##Plotting Model Results
+```{r plotting results}
+
+##Load data
+read.csv("Longarma_Predict.csv") -> Longarma_Predict # note that by "predict" we mean "predict for comparison to already observed values"
+read.csv("Longarma_Fitted.csv") -> Longarma_Fitted # note that by "fitted" we mean "now that the model is fitted, make predictions for new values"
+read.csv("Lake12All.csv") -> arch
+read.csv("Model_Outputs_Combined.csv") -> combo
+
+##Start Plotting
+
+#plot longar predict, predicted mean is red, actual observations is blue, both opacity .5 so solid purple is overlap
+ggplot(Longarma_Predict, aes(x = year_bp)) +
+  geom_ribbon(aes(ymin = Q2.5, ymax = Q97.5), fill = "skyblue", alpha = 0.2) +
+  geom_line(aes(y = Estimate), color = "blue", linewidth = 2, alpha = .5) +
+  geom_line(aes(y = elev_obs), color = "red", linewidth = 2, alpha = 0.5) +
+  labs(x = "Years Before Present", y = "Lake Elevation (MaSL)",title = "Observed vs. Modeled Lake Elevation") +
+  theme_minimal()
+
+
+#compare 12,000 years of predicted levels vs the archaeological reconstruction (Lake12All.csv)
+ggplot(combo, aes(x = year_b2015))+
+  geom_line(aes(y = arch_model), color = "red", linewidth = 2)+
+  geom_ribbon(aes(ymin = Fitted_Q2.5, ymax = Fitted_Q97.5), fill = "skyblue", alpha = 0.5)+
+  geom_smooth(aes(y = Fitted_Estimate), method = "gam", formula = y ~ s(x, k = 50), linewidth = 2)+
+  xlim(0, 13000)
+
+
+#plot full ~30,000 year predictions with mean and u/l 95. For the first 2,000 years, maybe just do a smooth. add actual levels for first 2000 years
+#Plot: light blue fill for upper and lower bounds, dark blue for predicted mean
+ggplot(combo, aes(x = year_b2015))+
+  geom_line(aes(y = elev_obs), color = "red", linewidth = 2)+
+  geom_ribbon(aes(ymin = Fitted_Q2.5, ymax = Fitted_Q97.5), fill = "skyblue", alpha = 0.5)+
+  geom_smooth(aes(y = Fitted_Estimate), method = "gam", formula = y ~ s(x, k = 50), linewidth = 2)
+
+
+## note caveats: past 12kya, we are entering the pleistocene. the model isn't built on pleistocene lake elevations, so may not account for things like glacial melt
+
+```
