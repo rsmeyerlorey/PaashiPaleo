@@ -43,7 +43,7 @@ read.csv("Raw Data/ElevSSTs.csv") -> clim
 ```{r plotting}
 
 ### plot sea surface temperature data
-ggplot(clim, aes(x = Year_B2015)) +
+ggplot(clim, aes(x = Year_B2005)) +
   #geom_point(aes(y = Isono_Int))+
   geom_point(aes(y = Seki_Int)) + #NE Pacific / "California Margin"
   geom_point(aes(y = Palmer_Int)) + #Western Equatorial Pacific
@@ -153,7 +153,7 @@ pp_check(mld_Long, ndraws = 100)
 ##Now that we have selected our SST sets with the best correlation to lake elevation, we want to see if other factors play in. Because this is a hydrological system, it is likely that the prior year can influence the next year.
 
 #first, let's treat the year BP as a random factor.
-clim$Year_F <- as.factor(clim$Year_B2015)
+clim$Year_F <- as.factor(clim$Year_B2005)
 
 mld_Combo_YR <- brm(elev ~ Isono_Int + Seki_Int + Palmer_Int + Leduc_Int + Barron_Int + (1 | Year_F),
                  data = clim,
@@ -171,7 +171,7 @@ pp_check(mld_Combo_YR, ndraws = 100)
 ##first, let's check our "auto correlation function" or ACF, to see how correlated each year's value is to the prior year; this will help us design better models.
 
 #fix data for acf and pacf 
-clim <- clim[order(clim$Year_B2015), ] #make double sure clim is read in order of year
+clim <- clim[order(clim$Year_B2005), ] #make double sure clim is read in order of year
 y <- clim$elev
 y_complete <- stats::na.omit(y) #acf and pacf will not work if there are NAs
 
@@ -197,7 +197,7 @@ spec.pgram(y_complete, log = "no", main = "Periodogram")
 
 ##model Long with previous year effects
 #ar(p = 1) for long, smooth persistence, often used in hydrological models
-mld_Longar <- brm(elev ~ Seki_Int + Palmer_Int + Davis5 + ar(p = 1, time = Year_B2015), 
+mld_Longar <- brm(elev ~ Seki_Int + Palmer_Int + Davis5 + ar(p = 1, time = Year_B2005), 
                  data = clim,
                  family = gaussian(),
                  chains = 3,
@@ -210,7 +210,7 @@ pp_check(mld_Longar, ndraws = 100)
 
 
 #ma(q = 1) does the deviation from the mean matter more than the actual value? Let's check ma
-mld_Longma <- brm(elev ~ Seki_Int + Palmer_Int + Davis5 + ma(q = 1, time = Year_B2015), 
+mld_Longma <- brm(elev ~ Seki_Int + Palmer_Int + Davis5 + ma(q = 1, time = Year_B2005), 
                  data = clim,
                  family = gaussian(),
                  chains = 3,
@@ -222,7 +222,7 @@ plot(mld_Longma)
 pp_check(mld_Longma, ndraws = 100)
 
 #arma(p = 1, q = 1) combines to see if both matter.
-mld_Longarma <- brm(elev ~ Seki_Int + Palmer_Int + Davis5 + arma(p = 1, q = 1, time = Year_B2015), 
+mld_Longarma <- brm(elev ~ Seki_Int + Palmer_Int + Davis5 + arma(p = 1, q = 1, time = Year_B2005), 
                  data = clim,
                  family = gaussian(),
                  chains = 4,
@@ -241,7 +241,7 @@ readRDS("Models/mld_Longarma.rds") -> mld_Longarma
 ##let's check for non-linear and more complex relationships
 
 #spline instead of linear
-mld_Longarmas <- brm(elev ~ s(Seki_Int) + s(Palmer_Int) + s(Davis5) + arma(p = 1, q = 1, time = Year_B2015), 
+mld_Longarmas <- brm(elev ~ s(Seki_Int) + s(Palmer_Int) + s(Davis5) + arma(p = 1, q = 1, time = Year_B2005), 
                  data = clim,
                  family = gaussian(),
                  cores = 3,
@@ -256,7 +256,7 @@ pp_check(mld_Longarmas, ndraws = 100)
 saveRDS(mld_Longarmas, file = "Models/mld_Longarmas.rds")
 
 #linear interactions between variables
-mld_Longarmar <- brm(elev ~ Seki_Int:Palmer_Int:Davis5 + arma(p = 1, q = 1, time = Year_B2015), 
+mld_Longarmar <- brm(elev ~ Seki_Int:Palmer_Int:Davis5 + arma(p = 1, q = 1, time = Year_B2005), 
                  data = clim,
                  family = gaussian(),
                  chains = 3,
@@ -276,7 +276,7 @@ saveRDS(mld_Longarmar, file = "Models/mld_Longarmar.rds")
 ##let's see if variance and flood frequency are influenced by SST
 #best linear model plus variance tested
 #note the bf() part, this is used if there are multiple parts in the model
-mld_Longarma_sig <- brm(bf(elev ~ Seki_Int + Palmer_Int + Davis5 + arma(p = 1, q = 1, time = Year_B2015),
+mld_Longarma_sig <- brm(bf(elev ~ Seki_Int + Palmer_Int + Davis5 + arma(p = 1, q = 1, time = Year_B2005),
     # variance (sigma) model: does variability depend on SST?
     sigma ~ Seki_Int + Palmer_Int + Davis5),
   data   = clim,
@@ -330,7 +330,7 @@ loo(mld_Longarmas, mld_Longarma, mld_Longarmar, compare = TRUE)
 as.data.frame(predict(mld_Longarma)) -> Longarma_Predict #outputs a data frame
 
 #add time and observed data
-Longarma_Predict$year_bp <- mld_Longarma$data$Year_B2015
+Longarma_Predict$year_bp <- mld_Longarma$data$Year_B2005
 Longarma_Predict$elev_obs <- mld_Longarma$data$elev
 
 #create a csv that we can load later for plotting, rather than running this again
@@ -351,15 +351,15 @@ ggplot(Longarma_Predict, aes(x = year_bp)) +
 
 #Build clean "new data" for prediction
 newdata_pred <- clim %>%
-  select(Year_B2015, Seki_Int, Palmer_Int, Davis5, elev) %>%
-  filter(!is.na(Year_B2015), !is.na(Seki_Int), !is.na(Palmer_Int), !is.na(Davis5)) %>%
-  arrange(Year_B2015)
+  select(Year_B2005, Seki_Int, Palmer_Int, Davis5, elev) %>%
+  filter(!is.na(Year_B2005), !is.na(Seki_Int), !is.na(Palmer_Int), !is.na(Davis5)) %>%
+  arrange(Year_B2005)
 
 # use fitted for efficiency. It will still take a very long time, so be sure to save the results afterwards.
 as.data.frame(fitted(mld_Longarma, newdata = newdata_pred)) -> Longarma_Fitted
 
 #add time
-Longarma_Fitted$year_bp <- newdata_pred$Year_B2015
+Longarma_Fitted$year_bp <- newdata_pred$Year_B2005
 
 #save for future use
 write.csv(Longarma_Fitted, "Processed Data/Longarma_Fitted.csv", row.names = FALSE)
@@ -396,7 +396,7 @@ summ_mat <- apply(
 Longarma_Epred <- as.data.frame(t(summ_mat))
 
 # Add time and observed elevation
-Longarma_Epred$year_bp  <- newdata_pred$Year_B2015
+Longarma_Epred$year_bp  <- newdata_pred$Year_B2005
 Longarma_Epred$elev_obs <- newdata_pred$elev  # optional but handy
 
 # Save to CSV for future use
@@ -442,7 +442,7 @@ ggplot(Longarma_Predict, aes(x = year_bp)) +
 
 
 #compare 12,000 years of predicted levels vs the archaeological reconstruction (Lake12All.csv)
-ggplot(combo, aes(x = year_b2015))+
+ggplot(combo, aes(x = year_b2005))+
   geom_line(aes(y = arch_model), color = "red", linewidth = 2)+
   geom_ribbon(aes(ymin = Fitted_Q2.5, ymax = Fitted_Q97.5), fill = "skyblue", alpha = 0.5)+
   geom_smooth(aes(y = Fitted_Estimate), method = "gam", formula = y ~ s(x, k = 50), linewidth = 2)+
@@ -451,12 +451,14 @@ ggplot(combo, aes(x = year_b2015))+
 
 #plot full ~30,000 year predictions with mean and u/l 95. For the first 2,000 years, maybe just do a smooth. add actual levels for first 2000 years
 #Plot: light blue fill for upper and lower bounds, dark blue for predicted mean
-ggplot(combo, aes(x = year_b2015))+
-  geom_line(aes(y = elev_obs), color = "red", linewidth = 2)+
+ggplot(combo, aes(x = year_b2005))+
+  geom_line(aes(y = elev_obs), color = "red", linewidth = 2, alpha = .5)+
   geom_ribbon(aes(ymin = Fitted_Q2.5, ymax = Fitted_Q97.5), fill = "skyblue", alpha = 0.5)+
   geom_smooth(aes(y = Fitted_Estimate), method = "gam", formula = y ~ s(x, k = 50), linewidth = 2)
 
 
 ## note caveats: past 12kya, we are entering the pleistocene. the model isn't built on pleistocene lake elevations, so may not account for things like glacial melt
+
+
 
 ```
