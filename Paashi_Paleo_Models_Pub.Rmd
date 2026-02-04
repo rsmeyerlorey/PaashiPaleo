@@ -33,7 +33,6 @@ clim <- read.csv("Raw Data/ElevSSTs.csv")
 ## Checking Paleoclimate Data
 ```{r plotting}
 
-# visual check on most viable sources
 par(mfrow = c(3, 2))
 plot(clim$Year_B2005, clim$Seki_Int, main = "Seki (NE Pacific, 28kya, ~400yr res)", pch = ".", xlim = c(0, 25000))
 plot(clim$Year_B2005, clim$Palmer_Int, main = "Palmer (W Eq Pacific, 23kya, ~600yr res)", pch = ".", xlim = c(0, 25000))
@@ -41,26 +40,6 @@ plot(clim$Year_B2005, clim$Davis1, main = "Davis-1/Barron (NE Pacific, 15kya, ~1
 plot(clim$Year_B2005, clim$Davis5, main = "Davis-5 (Okhotsk, 25kya, ~300yr res)", pch = ".", xlim = c(0, 25000))
 plot(clim$Year_B2005, clim$Isono_Int, main = "Isono (Japan, 15kya, ~20yr res) - EXCLUDED", pch = ".", xlim = c(0, 25000))
 par(mfrow = c(1, 1))
-
-
-# Standardize each record (mean = 0, sd = 1)
-clim$Seki_z <- scale(clim$Seki_Int)
-clim$Palmer_z <- scale(clim$Palmer_Int)
-clim$Davis5_z <- scale(clim$Davis5)
-clim$Davis1_z <- scale(clim$Davis1)
-
-# Create composite: average of the standardized records
-clim$SST_composite <- rowMeans(cbind(clim$Seki_z, clim$Palmer_z, clim$Davis5_z, clim$Davis1_z), na.rm = TRUE)
-
-# Plot it
-par(mfrow = c(2, 2))
-plot(clim$Year_B2005, clim$Seki_z, main = "Seki (standardized)", pch = ".", xlim = c(0, 25000))
-plot(clim$Year_B2005, clim$Palmer_z, main = "Palmer (standardized)", pch = ".", xlim = c(0, 25000))
-plot(clim$Year_B2005, clim$Davis5_z, main = "Davis5 (standardized)", pch = ".", xlim = c(0, 25000))
-plot(clim$Year_B2005, clim$Davis1_z, main = "Davis1 (standardized)", pch = ".", xlim = c(0, 25000))
-plot(clim$Year_B2005, clim$SST_composite, main = "Composite (mean of 4)", pch = ".", xlim = c(0, 25000))
-par(mfrow = c(1, 1))
-
 
 
 ##Examine training data
@@ -144,28 +123,17 @@ summary(mld_Cal)
 ## Compare Combined Models
 loo_combo <- loo(mld_Long, mld_Short, mld_Cal, compare = TRUE)
 print(loo_combo)
+#Model comparisons:
+#          elpd_diff se_diff
+#mld_Short   0.0       0.0  
+#mld_Long  -15.7       5.6  
+#mld_Cal   -26.2       7.3
 
 ```
 
 ##Add Prior Year Influence
 ```{r refining models}
 ##Now that we have selected our SST sets with the best correlation to lake elevation, we want to see if other factors play in. Because this is a hydrological system, it is likely that the prior year can influence the next year.
-
-#first, let's treat the year BP as a random factor.
-clim$Year_F <- as.factor(clim$Year_B2005)
-
-mld_Combo_YR <- brm(elev ~ Isono_Int + Seki_Int + Palmer_Int + Leduc_Int + Barron_Int + (1 | Year_F),
-                 data = clim,
-                 family = gaussian(),
-                 chains = 3,
-                 iter = 3000,
-                 warmup = 1000)
-
-summary(mld_Combo_YR)
-plot(mld_Combo_YR)
-pp_check(mld_Combo_YR, ndraws = 100)
-
-## this model fails to converge, so let's move on to the more likely situation, the prior year influencing the next
 
 ##first, let's check our "auto correlation function" or ACF, to see how correlated each year's value is to the prior year; this will help us design better models.
 
@@ -179,8 +147,8 @@ acf(y_complete, main = "ACF of elev (NAs dropped)")
 pacf(y_complete, main = "PACF of elev (NAs dropped)")
 
 #check longer to see if multi-decade patterns exist
-acf(y_complete, lag.max = 100, main = "ACF of residuals")
-pacf(y_complete, lag.max = 100, main = "PACF of residuals")
+acf(y_complete, lag.max = 80, main = "ACF of residuals")
+pacf(y_complete, lag.max = 80, main = "PACF of residuals")
 
 #check periodogram to see if there are strong frequencies/periodicities in the data
 spec.pgram(y_complete, log = "no", main = "Periodogram")
@@ -194,95 +162,48 @@ spec.pgram(y_complete, log = "no", main = "Periodogram")
 
 #given what we see here, we can probably be safe with ar(p = 1), but could also reasonably try arma(p = 1, q = 1). 
 
-
-## ARMA testing on mld_Short (best model, 0-15kya)
-
-# AR(1) only
-mld_Shortar <- brm(elev ~ Seki_Int + Palmer_Int + Davis5 + Davis1 + ar(p = 1, time = Year_B2005), 
-                   data = clim,
-                   family = gaussian(),
-                   chains = 3, iter = 3000, warmup = 1000)
-summary(mld_Shortar)
-
-# MA(1) only  
-mld_Shortma <- brm(elev ~ Seki_Int + Palmer_Int + Davis5 + Davis1 + ma(q = 1, time = Year_B2005), 
-                   data = clim,
-                   family = gaussian(),
-                   chains = 3, iter = 3000, warmup = 1000)
-summary(mld_Shortma)
-
-# ARMA(1,1)
-mld_Shortarma <- brm(elev ~ Seki_Int + Palmer_Int + Davis5 + Davis1 + arma(p = 1, q = 1, time = Year_B2005), 
-                     data = clim,
-                     family = gaussian(),
-                     chains = 4, iter = 4000, warmup = 2000,
-                     seed = 2025)
-summary(mld_Shortarma)
-
-# Compare AR/MA variants for Short model
-loo_short_arma <- loo(mld_Short, mld_Shortar, mld_Shortma, mld_Shortarma, compare = TRUE)
-print(loo_short_arma)
-
-#Model comparisons:
-#              elpd_diff se_diff
-#mld_Shortarma    0.0       0.0 
-#mld_Shortar     -3.9       3.4 
-#mld_Shortma   -396.4      30.6 
-#mld_Short     -984.2      42.3
-
-saveRDS(mld_Shortarma, file = "Models/mld_Shortarma.rds")
-
-
-## ARMA testing on mld_Long (extended model, 0-23kya)
-
-# AR(1) only
+##model Long with previous year effects
+#ar(p = 1) for long, smooth persistence, often used in hydrological models
 mld_Longar <- brm(elev ~ Seki_Int + Palmer_Int + Davis5 + ar(p = 1, time = Year_B2005), 
-                  data = clim,
-                  family = gaussian(),
-                  chains = 3, iter = 3000, warmup = 1000)
+                 data = clim,
+                 family = gaussian(),
+                 chains = 3,
+                 iter = 3000,
+                 warmup = 1000)
+
 summary(mld_Longar)
+plot(mld_Longar)
+pp_check(mld_Longar, ndraws = 100)
 
-# MA(1) only
+
+#ma(q = 1) does the deviation from the mean matter more than the actual value? Let's check ma
 mld_Longma <- brm(elev ~ Seki_Int + Palmer_Int + Davis5 + ma(q = 1, time = Year_B2005), 
-                  data = clim,
-                  family = gaussian(),
-                  chains = 3, iter = 3000, warmup = 1000)
+                 data = clim,
+                 family = gaussian(),
+                 chains = 3,
+                 iter = 3000,
+                 warmup = 1000)
+
 summary(mld_Longma)
+plot(mld_Longma)
+pp_check(mld_Longma, ndraws = 100)
 
-# ARMA(1,1)
+#arma(p = 1, q = 1) combines to see if both matter.
 mld_Longarma <- brm(elev ~ Seki_Int + Palmer_Int + Davis5 + arma(p = 1, q = 1, time = Year_B2005), 
-                    data = clim,
-                    family = gaussian(),
-                    chains = 4, iter = 4000, warmup = 2000,
-                    seed = 2025)
+                 data = clim,
+                 family = gaussian(),
+                 chains = 4,
+                 iter = 4000,
+                 warmup = 2000,
+                 seed = 2025)
+
 summary(mld_Longarma)
+plot(mld_Longarma)
+pp_check(mld_Longarma, ndraws = 100)
 saveRDS(mld_Longarma, file = "Models/mld_Longarma.rds")
+readRDS("Models/mld_Longarma.rds") -> mld_Longarma
 
-# Compare AR/MA variants for Long model
-loo_long_arma <- loo(mld_Long, mld_Longar, mld_Longma, mld_Longarma, compare = TRUE)
-print(loo_long_arma)
-
-#Model comparisons:
-#             elpd_diff se_diff
-#mld_Longarma    0.0       0.0 
-#mld_Longar     -4.1       3.4 
-#mld_Longma   -405.7      30.9 
-#mld_Long     -998.7      42.5 
-
-loo(mld_Longarma, mld_Shortarma, compare = TRUE)
-#Model comparisons:
-#              elpd_diff se_diff
-#mld_Shortarma  0.0       0.0   
-#mld_Longarma  -1.1       2.0  
-
-
-
-##Use mld_Longarma as primary model because:
-#Statistically equivalent to mld_Shortarma
-#Extends hindcast to ~23kya instead of ~15kya
-#Simpler (3 predictors vs 4)
-#More parsimonious
-
+##Longarma was best
 
 ##let's check for non-linear and more complex relationships
 
@@ -302,32 +223,17 @@ pp_check(mld_Longarmas, ndraws = 100)
 saveRDS(mld_Longarmas, file = "Models/mld_Longarmas.rds")
 
 #linear interactions between variables
-mld_Longarma_int <- brm(elev ~ Seki_Int * Palmer_Int * Davis5 + arma(p = 1, q = 1, time = Year_B2005), 
-                        data = clim,
-                        family = gaussian(),
-                        chains = 3, iter = 3000, warmup = 1000)
+mld_Longarmar <- brm(elev ~ Seki_Int:Palmer_Int:Davis5 + arma(p = 1, q = 1, time = Year_B2005), 
+                 data = clim,
+                 family = gaussian(),
+                 chains = 3,
+                 iter = 3000,
+                 warmup = 1000)
 
-summary(mld_Longarma_int)
-plot(mld_Longarma_int)
-pp_check(mld_Longarma_int, ndraws = 100)
-saveRDS(mld_Longarma_int, file = "Models/mld_Longarma_int.rds")
-
-# Compare
-loo(mld_Longarma, mld_Longarmas, mld_Longarma_int, compare = TRUE)
-
-#Model comparisons:
-#                 elpd_diff se_diff
-#mld_Longarmas     0.0       0.0   
-#mld_Longarma_int -0.8       1.8   
-#mld_Longarma     -4.1       3.3   
-
-#None of the differences exceed 2 SE.
-#Stick with mld_Longarma (linear)
-  #Simpler — easier to interpret and explain
-  #No divergent transitions (spline model had 13)
-  #Statistically indistinguishable from more complex models
-  #processing time
-  #Parsimony
+summary(mld_Longarmar)
+plot(mld_Longarmar)
+pp_check(mld_Longarmar, ndraws = 100)
+saveRDS(mld_Longarmar, file = "Models/mld_Longarmar.rds")
 
 #gaussian processing
 ##note, gaussian processing allows you to model multiple factors as a "surface"; so, you could do gp(lat, long), or gp(lat, long, elev) for a 3 dimensional space. this takes an immensely long time to process, so we will not run it here.
@@ -350,15 +256,43 @@ mld_Longarma_sig <- brm(bf(elev ~ Seki_Int + Palmer_Int + Davis5 + arma(p = 1, q
 
 saveRDS(mld_Longarma_sig, file = "Models/mld_Longarma_sig.rds")
 summary(mld_Longarma_sig)
-# remember that sigma summaries default to log.
+# remember that sigma summaries default to log. seems like seki crosses zero and has little effect, palmer has a positive effect, and davis has a negative effect.
 
-loo(mld_Longarma_sig, mld_Longarma, compare = TRUE)
-#Model comparisons:
-#                 elpd_diff se_diff
-#mld_Longarma_sig  0.0       0.0   
-#mld_Longarma     -0.1       3.9
+#let's check alpha / skewness / correlation with results being on one side of the distribution
+mld_Longarma_alpha <- brm(bf(elev ~ Seki_Int + Palmer_Int + Davis5,
+    # right tail (alpha) model: do high elevations depend on SST?
+    alpha ~ Seki_Int + Palmer_Int + Davis5),
+  data   = clim,
+  family = skew_normal(), #allows us to check skew, but does slightly change other results
+  cores = 3,
+  chains = 3,
+  iter   = 3000,
+  warmup = 1000,
+  seed = 2025)
 
-##no big difference between longarma and longarma_sig. Without year-over-year SSTs, we shouldn't necessarily expect pick up on yearly variability from SSTs. Yearly fluctuations are captured by ar/ma
+saveRDS(mld_Longarma_alpha, file = "Models/mld_Longarma_alpha.rds")
+summary(mld_Longarma_alpha)
+#looks like seki has little effect on variance but does drive elevations, palmer is strongly correlated with floods, and davis is correlated with droughts. This makes sense, as palmer is eastern equitorial, associated with el nino events.
+
+```
+
+##Comparing Models
+```{r compare models}
+##compare models
+##compare all single-predictor models (excluding Leduc)
+loo_single <- loo(mld_Isono, mld_Seki, mld_Palmer, mld_Barron, mld_Davis1, mld_Davis5, 
+                  compare = TRUE)
+print(loo_single)
+#in order of best to worst: 
+
+##compare combination models
+loo_combo <- loo(mld_Long, mld_HighRes, mld_CalProximal, mld_All, compare = TRUE)
+print(loo_combo)
+# in order best to worst: 
+
+# taking into account previous year value provides the best result; year as random factor fails to converge.
+loo(mld_Longarmas, mld_Longarma, mld_Longarmar, compare = TRUE)
+#longarmas (spline) is best.
 
 ```
 
@@ -417,50 +351,6 @@ ggplot(Longarma_Fitted, aes(x = year_bp)) +
   labs(x = "Years Before Present", y = "Lake Elevation (MaSL)", title = "Out-of-sample Expected Elevation Through Time") +
   theme_minimal()
 
-
-## if this turns out to be too heavy, we can limit the number of draws manually and then summarize it ourselves
-#posterior_epred(mld_Longar, newdata = newdata_pred, ndraws = X)
-
-epred <- posterior_epred(
-  mld_Longarma,
-  newdata = newdata_pred,
-  ndraws = 250)
-
-#summarize results manually
-summ_mat <- apply(
-  epred, 2,
-  function(x) c(
-    Estimate = mean(x),
-    Q2.5     = quantile(x, 0.025, names = FALSE),
-    Q97.5    = quantile(x, 0.975, names = FALSE)))
-
-# Turn into a data frame with one row per observation
-Longarma_Epred <- as.data.frame(t(summ_mat))
-
-# Add time and observed elevation
-Longarma_Epred$year_bp  <- newdata_pred$Year_B2005
-Longarma_Epred$elev_obs <- newdata_pred$elev  # optional but handy
-
-# Save to CSV for future use
-write.csv(Longarma_Epred, "Processed Data/Longarma_epred.csv", row.names = FALSE)
-
-Longarma_Epred <- read.csv("Processed Data/Longarma_epred.csv", check.names = FALSE)
-
-#plot to check
-ggplot(Longarma_Epred, aes(x = year_bp)) +
-  geom_ribbon(aes(ymin = Q2.5, ymax = Q97.5),
-              fill = "skyblue", alpha = 0.4) +
-  geom_line(aes(y = Estimate),
-            color = "blue", linewidth = 1) +
-  geom_line(aes(y = elev_obs),
-            color = "black", linewidth = 0.8, alpha = 0.5) +
-  labs(x = "Years Before Present",
-       y = "Lake Elevation (m)",
-       title = "Expected Lake Elevation with 95% Credible Intervals") +
-  theme_minimal()
-###
-
-
 ```
 
 ##Plotting Model Results
@@ -474,11 +364,11 @@ read.csv("Processed Data/Model_Outputs_Combined.csv") -> combo
 
 ##Start Plotting
 
-#plot longarma prediction for training period
+#plot longar predict, predicted mean is red, actual observations is blue, both opacity .5 so solid purple is overlap
 ggplot(Longarma_Predict, aes(x = year_bp)) +
-  geom_ribbon(aes(ymin = Q2.5, ymax = Q97.5), fill = "skyblue", alpha = 0.5) +
-  geom_line(aes(y = Estimate), color = "blue", linewidth = 1) +
-  geom_line(aes(y = elev_obs), color = "black", linewidth = 1.5, alpha = 0.4) +
+  geom_ribbon(aes(ymin = Q2.5, ymax = Q97.5), fill = "skyblue", alpha = 0.2) +
+  geom_line(aes(y = Estimate), color = "blue", linewidth = 2, alpha = .5) +
+  geom_line(aes(y = elev_obs), color = "red", linewidth = 2, alpha = 0.5) +
   labs(x = "Years Before Present", y = "Lake Elevation (MaSL)",title = "Observed vs. Modeled Lake Elevation") +
   theme_minimal()
 
@@ -499,8 +389,7 @@ ggplot(combo, aes(x = year_b2005))+
   geom_smooth(aes(y = Fitted_Estimate), method = "gam", formula = y ~ s(x, k = 50), linewidth = 2)
 
 
-## note caveats: past 12kya, we are entering the pleistocene. the model isn't built on pleistocene lake elevations, so may not account for things like glacial melt
-
+## note caveats: further back past 11.7kya, we are beginning to go back into the pleistocene. the model isn't built on pleistocene lake elevations, so may not account for things like glacial melt
 
 
 ```
