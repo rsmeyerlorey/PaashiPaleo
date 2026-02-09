@@ -205,6 +205,15 @@ readRDS("Models/mld_Longarma.rds") -> mld_Longarma
 
 ##Longarma was best
 
+# Test whether SSTs are necessary, or if ARMA alone suffices
+mld_arma_only <- brm(elev ~ 1 + arma(p = 1, q = 1, time = Year_B2005),
+                     data = clim,
+                     family = gaussian(),
+                     chains = 4, iter = 4000, warmup = 2000)
+
+loo(mld_Longarma, mld_arma_only, compare = TRUE)
+# ARMA-only model fails to converge properly; SST predictors provide structure; ARMA alone cannot model lake elevation without climate forcing
+
 ##let's check for non-linear and more complex relationships
 
 #spline instead of linear
