@@ -147,8 +147,8 @@ acf(y_complete, main = "ACF of elev (NAs dropped)")
 pacf(y_complete, main = "PACF of elev (NAs dropped)")
 
 #check longer to see if multi-decade patterns exist
-acf(y_complete, lag.max = 80, main = "ACF of residuals")
-pacf(y_complete, lag.max = 80, main = "PACF of residuals")
+acf(y_complete, lag.max = 100, main = "century ACF of elev")
+pacf(y_complete, lag.max = 100, main = "century PACF of elev")
 
 #check periodogram to see if there are strong frequencies/periodicities in the data
 spec.pgram(y_complete, log = "no", main = "Periodogram")
@@ -203,7 +203,13 @@ pp_check(mld_Longarma, ndraws = 100)
 saveRDS(mld_Longarma, file = "Models/mld_Longarma.rds")
 readRDS("Models/mld_Longarma.rds") -> mld_Longarma
 
-##Longarma was best
+loo(mld_Long, mld_Longar, mld_Longma, mld_Longarma, compare = TRUE)
+# Results:
+#              elpd_diff se_diff
+# mld_Longarma    0.0       0.0 
+# mld_Longar     -4.1       3.4 
+# mld_Longma   -405.7      30.9 
+# mld_Long     -998.7      42.5
 
 # Test whether SSTs are necessary, or if ARMA alone suffices
 mld_arma_only <- brm(elev ~ 1 + arma(p = 1, q = 1, time = Year_B2005),
@@ -247,7 +253,13 @@ saveRDS(mld_Longarmar, file = "Models/mld_Longarmar.rds")
 #gaussian processing
 ##note, gaussian processing allows you to model multiple factors as a "surface"; so, you could do gp(lat, long), or gp(lat, long, elev) for a 3 dimensional space. this takes an immensely long time to process, so we will not run it here.
 
-## the original longarma linear model was still the best.
+loo(mld_Longarma, mld_Longarmas, mld_Longarmar, compare = TRUE)
+# Results:
+#                  elpd_diff se_diff
+# mld_Longarmas     0.0       0.0   
+# mld_Longarma_int -0.8       1.8   
+# mld_Longarma     -4.1       3.3
+# Differences within 2 SE; retain simpler mld_Longarma
 
 ##let's see if variance and flood frequency are influenced by SST
 #best linear model plus variance tested
@@ -265,7 +277,7 @@ mld_Longarma_sig <- brm(bf(elev ~ Seki_Int + Palmer_Int + Davis5 + arma(p = 1, q
 
 saveRDS(mld_Longarma_sig, file = "Models/mld_Longarma_sig.rds")
 summary(mld_Longarma_sig)
-# remember that sigma summaries default to log. seems like seki crosses zero and has little effect, palmer has a positive effect, and davis has a negative effect.
+# remember that sigma summaries default to log.
 
 #let's check alpha / skewness / correlation with results being on one side of the distribution
 mld_Longarma_alpha <- brm(bf(elev ~ Seki_Int + Palmer_Int + Davis5,
@@ -281,27 +293,6 @@ mld_Longarma_alpha <- brm(bf(elev ~ Seki_Int + Palmer_Int + Davis5,
 
 saveRDS(mld_Longarma_alpha, file = "Models/mld_Longarma_alpha.rds")
 summary(mld_Longarma_alpha)
-#looks like seki has little effect on variance but does drive elevations, palmer is strongly correlated with floods, and davis is correlated with droughts. This makes sense, as palmer is eastern equitorial, associated with el nino events.
-
-```
-
-##Comparing Models
-```{r compare models}
-##compare models
-##compare all single-predictor models (excluding Leduc)
-loo_single <- loo(mld_Isono, mld_Seki, mld_Palmer, mld_Barron, mld_Davis1, mld_Davis5, 
-                  compare = TRUE)
-print(loo_single)
-#in order of best to worst: 
-
-##compare combination models
-loo_combo <- loo(mld_Long, mld_HighRes, mld_CalProximal, mld_All, compare = TRUE)
-print(loo_combo)
-# in order best to worst: 
-
-# taking into account previous year value provides the best result; year as random factor fails to converge.
-loo(mld_Longarmas, mld_Longarma, mld_Longarmar, compare = TRUE)
-#longarmas (spline) is best.
 
 ```
 
@@ -373,7 +364,7 @@ read.csv("Processed Data/Model_Outputs_Combined.csv") -> combo
 
 ##Start Plotting
 
-#plot longar predict, predicted mean is red, actual observations is blue, both opacity .5 so solid purple is overlap
+#plot longar predict, predicted mean is blue, actual observations is red, both opacity .5 so solid purple is overlap
 ggplot(Longarma_Predict, aes(x = year_bp)) +
   geom_ribbon(aes(ymin = Q2.5, ymax = Q97.5), fill = "skyblue", alpha = 0.2) +
   geom_line(aes(y = Estimate), color = "blue", linewidth = 2, alpha = .5) +
