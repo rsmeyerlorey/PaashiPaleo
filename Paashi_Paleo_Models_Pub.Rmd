@@ -358,7 +358,7 @@ loo(mld_Longarma, mld_Longarmas, mld_Longarmar, compare = TRUE)
 # Results:
 #                  elpd_diff se_diff
 # mld_Longarmas     0.0       0.0   
-# mld_Longarma_int -0.8       1.8   
+# mld_Longarmar    -0.8       1.8
 # mld_Longarma     -4.1       3.3
 # Differences within 2 SE; keep simpler mld_Longarma for ease of processing and interpreting
 
@@ -382,7 +382,7 @@ mld_Longarma_sig <- brm(bf(elev ~ Seki_Int + Palmer_Int + Davis5 + arma(p = 1, q
   control = list(adapt_delta = 0.95))
 
 saveRDS(mld_Longarma_sig, file = "Models/mld_Longarma_sig.rds")
-readRDS(mld_Longarma_sig, file = "Models/mld_Longarma_sig.rds")
+readRDS("Models/mld_Longarma_sig.rds") -> mld_Longarma_sig
 summary(mld_Longarma_sig)
 # remember that sigma summaries default to log.
 
@@ -399,7 +399,7 @@ mld_Long_skew <- brm(bf(elev ~ Seki_Int + Palmer_Int + Davis5,
   seed = 2025)
 
 saveRDS(mld_Long_skew, file = "Models/mld_Long_skew.rds")
-readRDS(mld_Long_skew, file = "Models/mld_Long_skew.rds")
+readRDS("Models/mld_Long_skew.rds") -> mld_Long_skew
 summary(mld_Long_skew)
 
 ##neither of these provide very strong results. Likely because ar/ma soaks up most of the year over year fluctuations; without year over year SSTs we don't see SST influence on skew and variability.
@@ -551,6 +551,58 @@ ggplot(combo, aes(x = year_b2005))+
 
 ## note caveats: further back past 11.7kya, we are beginning to go back into the pleistocene. the model isn't built on pleistocene lake elevations, so may not account for things like glacial melt
 
+```
+
+## ARMA Autocorrelation Test
+```{r arma_autocor_test}
+# Identify the training boundary
+train_max <- max(mld_Longarma$data$Year_B2005)
+
+# Build newdata: training period + first 100 years past it
+newdata_arma_test <- clim %>%
+  select(Year_B2005, Seki_Int, Palmer_Int, Davis5, elev) %>%
+  filter(!is.na(Seki_Int), !is.na(Palmer_Int), !is.na(Davis5)) %>%
+  filter(Year_B2005 <= train_max + 100) %>%
+  arrange(Year_B2005)
+
+# Identify which rows are out-of-sample
+n_train <- sum(newdata_arma_test$Year_B2005 <= train_max)
+oos_rows <- (n_train + 1):nrow(newdata_arma_test)
+
+# Default predict
+pred_default_full <- as.data.frame(predict(mld_Longarma, newdata = newdata_arma_test))
+colnames(pred_default_full) <- c("Est", "SE", "Q2.5", "Q97.5")
+pred_default <- pred_default_full[oos_rows, ]
+pred_default$method <- "Default"
+pred_default$year_bp <- newdata_arma_test$Year_B2005[oos_rows]
+
+# incl_autocor = FALSE (ARMA ignored)
+pred_off_full <- as.data.frame(
+  predict(mld_Longarma, newdata = newdata_arma_test, incl_autocor = FALSE)
+)
+colnames(pred_off_full) <- c("Est", "SE", "Q2.5", "Q97.5")
+pred_off <- pred_off_full[oos_rows, ]
+pred_off$method <- "incl_autocor = FALSE"
+pred_off$year_bp <- newdata_arma_test$Year_B2005[oos_rows]
+
+# Training period tail: last 100 years of in-sample predictions
+train_tail_full <- as.data.frame(predict(mld_Longarma))
+train_tail_full$year_bp <- mld_Longarma$data$Year_B2005
+train_tail <- train_tail_full %>%
+  filter(year_bp >= train_max - 100) %>%
+  rename(Est = Estimate, SE = Est.Error, Q2.5 = Q2.5, Q97.5 = Q97.5) %>%
+  mutate(method = "Training / in-sample")
+
+# Combine for plotting
+plot_data <- bind_rows(train_tail, pred_default, pred_off)
+
+ggplot(plot_data, aes(x = year_bp, color = method, fill = method)) +
+  geom_ribbon(aes(ymin = Q2.5, ymax = Q97.5), alpha = 0.15, color = NA) +
+  geom_line(aes(y = Est, linetype = method), linewidth = 0.8) +
+  scale_linetype_manual(values = c("Training / in-sample" = "solid",
+                                   "Default" = "solid",
+                                   "incl_autocor = FALSE" = "dashed")) +
+  theme_minimal()
 ```
 
 ## Session Info
