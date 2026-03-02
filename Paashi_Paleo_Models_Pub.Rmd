@@ -655,9 +655,6 @@ ggplot(obs_elev, aes(x = Calendar_Year)) +
             color = col_observed, linewidth = 0.4) +
   geom_hline(yintercept = drainage_level, color = col_observed,
              linewidth = 0.3, linetype = "solid") +
-  annotate("text", x = max(obs_elev$Calendar_Year) + 5, y = drainage_level + 0.3,
-           label = "64.5 MaSL — Drainage Level",
-           size = 2.5, hjust = 1, color = "gray40") +
   labs(x = "Calendar Year AD", y = "Water Surface Elevation (MaSL)",
        title = "Observed Tulare Lake Elevation — Drainage Periods Highlighted") +
   theme_paashi()
