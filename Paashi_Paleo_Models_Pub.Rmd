@@ -11,14 +11,8 @@ editor_options:
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
-## Loading Packages
+## Loading Packages and Raw Data
 ```{r loading packages/data}
-
-#install.packages("brms")
-#install.packages("tidyverse")
-#install.packages("tidybayes")
-#install.packages("ggplot2")
-#install.packages("ggthemes")
 
 library(tidyverse)
 library(tidybayes)
@@ -28,9 +22,63 @@ library(brms)
 library(bayesplot)
 library(loo)
 library(patchwork)
+library(scales)
+library(ggrepel)
+library(maps)
 
 clim <- read.csv("Raw Data/ElevSSTs.csv")
 
+```
+
+## Publication Theme and Palette (assisted by Claude Code)
+```{r theme_and_palette}
+# Colorblind-safe, grayscale-distinguishable palette
+col_model_line   <- "#1F4E79"   # dark blue — model trend line
+col_model_ribbon <- "#A8C8E8"   # light blue — prediction interval
+col_model_inner  <- "#4682B4"   # steel blue — fitted CI
+col_observed     <- "gray20"    # near-black — observed data
+col_arch         <- "#B85C38"   # terra cotta — archaeological reconstruction
+col_seki         <- "#D4930D"   # amber — Seki SST (California Margin)
+col_palmer       <- "#1B998B"   # teal — Palmer SST (W. Equatorial Pacific)
+col_davis5       <- "#5B7B9A"   # slate blue — Davis5 SST (Sea of Okhotsk)
+col_train_bg     <- "#FFF8F0"   # faint warm — training window background
+col_pleis_line   <- "gray50"    # Pleistocene-Holocene boundary
+
+# Shared theme for JAS (Elsevier) publication — min 7pt text, sans-serif
+theme_paashi <- function(base_size = 8) {
+  theme_minimal(base_size = base_size, base_family = "sans") %+replace%
+    theme(
+      plot.title       = element_text(size = rel(1.15), face = "bold",
+                                      hjust = 0, margin = margin(b = 4)),
+      plot.subtitle    = element_text(size = rel(0.95), color = "gray30",
+                                      hjust = 0, margin = margin(b = 6)),
+      axis.title       = element_text(size = rel(1.0)),
+      axis.text        = element_text(size = rel(0.9), color = "gray20"),
+      strip.text       = element_text(size = rel(1.0), face = "bold"),
+      legend.text      = element_text(size = rel(0.9)),
+      legend.title     = element_text(size = rel(0.95), face = "bold"),
+      panel.grid.minor = element_blank(),
+      panel.grid.major = element_line(color = "gray90", linewidth = 0.3),
+      plot.margin      = margin(8, 8, 8, 8),
+      legend.position  = "bottom",
+      legend.key.size  = unit(0.4, "cm")
+    )
+}
+
+# Save figures at JAS dimensions
+save_fig <- function(plot, filename,
+                     width_mm = 190, height_mm = 120,
+                     dpi = 500, device = "tiff") {
+  ggsave(
+    filename = file.path("Figures", filename),
+    plot     = plot,
+    width    = width_mm, height = height_mm,
+    units    = "mm", dpi = dpi, device = device,
+    compression = if (device == "tiff") "lzw" else NULL
+  )
+}
+
+dir.create("Figures", showWarnings = FALSE)
 ```
 
 ## Checking Paleoclimate Data
@@ -55,14 +103,13 @@ ggplot(clim, aes(x = elev)) +
 ## Define Explicit Priors
 ```{r define_priors}
 ## Inspect what brms would choose as defaults for our final model
-default_priors <- get_prior(
-  elev ~ Seki_Int + Palmer_Int + Davis5 + arma(p = 1, q = 1, time = Year_B2005),
+default_priors <- get_prior(elev ~ Seki_Int + Palmer_Int + Davis5 + arma(p = 1, q = 1, time = Year_B2005),
   data = clim,
   family = gaussian())
 
 print(default_priors)
 
-## Define weakly informative priors in case others have different versions
+## Define weakly informative priors in case others have different versions of R or BRMS
 # Intercept: Normal(63, 5) -- centered on mean observed lake elevation (~63 MaSL), 95% prior mass between 53-73m, generous given basin physical limits. Modern basin bottom is at 55masl, and highest visible geological shoreline is ~70masl. Note that over time, lake basins may rise due to sediment.
 # Slopes: Normal(0, 5) -- 1-degree SST change shifts lake by <10m (2 SD);  generous since entire observed elev range is ~9m
 # Sigma: half-Student-t(3, 0, 3) -- standard weakly informative for residual SD
@@ -172,6 +219,7 @@ mld_Long <- brm(elev ~ Seki_Int + Palmer_Int + Davis5,
                 chains = 4, iter = 3000, warmup = 1000,
                 seed = 2025)
 summary(mld_Long)
+saveRDS(mld_Long, file = "Models/mld_Long.rds")
 
 # mld_Short: All four records (best fit, limited to ~15kya by Davis1)
 # Adds Davis1/Barron for improved fit within Holocene
@@ -204,15 +252,102 @@ loo(mld_Long, mld_Short, mld_Cal, compare = TRUE)
 #mld_Long  -15.8       5.6  
 #mld_Cal   -26.1       7.3
 
+## Based off of these results, mld_Long looks like the way to go. It is not too terrible compared to mld_Short, and will allow us to predict much further back in time.
+
+```
+
+### Figure 1: Study Area and Data Overview (assisted by Claude Code)
+```{r fig1_map_and_sst, fig.width = 7.5, fig.height = 6}
+
+##Let's visualize where our selected SSTs are coming from and what they look like.
+
+# Panel A: Pacific Basin map with SST core sites + Tulare Lake
+sites <- data.frame(
+  name = c("Tulare Lake", "Seki et al.\n(California Margin)",
+           "Palmer & Pearson\n(W. Equatorial Pacific)",
+           "Davis et al.\n(Sea of Okhotsk)"),
+  lon  = c(-119.5, -126.0, 159.0, 145.0),
+  lat  = c(35.9, 42.0, 0.0, 50.0),
+  type = c("lake", "sst", "sst", "sst"),
+  col  = c(col_observed, col_seki, col_palmer, col_davis5)
+)
+
+world2 <- map_data("world2")
+sites$lon360 <- ifelse(sites$lon < 0, sites$lon + 360, sites$lon)
+
+fig1a <- ggplot() +
+  geom_polygon(data = world2, aes(x = long, y = lat, group = group),
+               fill = "gray92", color = "gray70", linewidth = 0.15) +
+  geom_point(data = sites, aes(x = lon360, y = lat),
+             color = sites$col, fill = sites$col,
+             shape = c(18, 16, 16, 16), size = c(3, 2.5, 2.5, 2.5)) +
+  geom_text_repel(data = sites, aes(x = lon360, y = lat, label = name),
+                  size = 2.2, color = sites$col,
+                  box.padding = 0.5, max.overlaps = 10,
+                  fontface = "bold", lineheight = 0.85) +
+  coord_cartesian(xlim = c(100, 300), ylim = c(-15, 58), expand = FALSE) +
+  scale_x_continuous(breaks = c(120, 150, 180, 210, 240, 270),
+                     labels = c("120\u00B0E", "150\u00B0E", "180\u00B0",
+                                "150\u00B0W", "120\u00B0W", "90\u00B0W")) +
+  labs(title = "A. Study area and paleoclimate data sources",
+       x = NULL, y = NULL) +
+  theme_paashi() +
+  theme(axis.title = element_blank(),
+        axis.text = element_text(size = 6),
+        panel.grid.major = element_line(color = "gray85", linewidth = 0.2))
+
+# Panel B: SST predictor time series
+sst_interp <- clim %>%
+  select(Year_B2005, Seki_Int, Palmer_Int, Davis5) %>%
+  pivot_longer(-Year_B2005, names_to = "source", values_to = "sst_interp") %>%
+  mutate(source = recode(source,
+    "Seki_Int"   = "Seki (California Margin)",
+    "Palmer_Int" = "Palmer (W. Equatorial Pacific)",
+    "Davis5"     = "Davis (Sea of Okhotsk)"))
+
+sst_raw <- clim %>%
+  select(Year_B2005, Seki_SST, Palmer_SST) %>%
+  pivot_longer(-Year_B2005, names_to = "source", values_to = "sst_raw") %>%
+  filter(!is.na(sst_raw)) %>%
+  mutate(source = recode(source,
+    "Seki_SST"  = "Seki (California Margin)",
+    "Palmer_SST" = "Palmer (W. Equatorial Pacific)"))
+
+sst_colors <- c(
+  "Seki (California Margin)"       = col_seki,
+  "Palmer (W. Equatorial Pacific)"  = col_palmer,
+  "Davis (Sea of Okhotsk)"          = col_davis5)
+
+fig1b <- ggplot() +
+  geom_line(data = sst_interp,
+            aes(x = Year_B2005, y = sst_interp, color = source),
+            linewidth = 0.3, alpha = 0.7) +
+  geom_point(data = sst_raw,
+             aes(x = Year_B2005, y = sst_raw, color = source),
+             size = 0.4, alpha = 0.5) +
+  scale_color_manual(values = sst_colors) +
+  scale_x_continuous(labels = comma_format(),
+                     breaks = seq(0, 28000, by = 4000)) +
+  labs(x = "Years Before Present (cal yr BP)",
+       y = "Sea Surface Temperature (\u00B0C)",
+       title = "B. Pacific SST records used as predictors",
+       subtitle = "Lines = interpolated; points = original measurements",
+       color = NULL) +
+  theme_paashi() +
+  theme(legend.position = "bottom")
+
+fig1 <- fig1a / fig1b + plot_layout(heights = c(3, 3))
+fig1
+## save_fig(fig1, "Figure_1_Data_Overview.tiff", width_mm = 190, height_mm = 170)
 ```
 
 ##Add Prior Year Influence
-```{r refining models}
+```{r refining_models}
 ##Now that we have selected our SST sets with the best correlation to lake elevation, we want to see if other factors play in. Because this is a hydrological system, it is likely that the prior year can influence the next year.
 
 ##first, let's check our "auto correlation function" or ACF, to see how correlated each year's value is to the prior year; this will help us design better models.
 
-#fix data for acf and pacf 
+#fix data for acf and pacf
 clim <- clim[order(clim$Year_B2005), ] #make double sure clim is read in order of year
 y <- clim$elev
 y_complete <- stats::na.omit(y) #acf and pacf will not work if there are NAs
@@ -221,17 +356,10 @@ y_complete <- stats::na.omit(y) #acf and pacf will not work if there are NAs
 acf(y_complete, main = "ACF of elev (NAs dropped)")
 pacf(y_complete, main = "PACF of elev (NAs dropped)")
 
-#check longer to see if multi-decade patterns exist
-acf(y_complete, lag.max = 100, main = "century ACF of elev")
-pacf(y_complete, lag.max = 100, main = "century PACF of elev")
-
-#check periodogram to see if there are strong frequencies/periodicities in the data
-spec.pgram(y_complete, log = "no", main = "Periodogram")
-
 #looks like we are strongly correlated for 1 year prior in the PACF. So, in ACF, value is strongly correlated with prior values, slowly tapering until ~15 prior values.
-#periodicity around ~40 years backs up oral traditions, but is not necessarily strong enough to warrant adding fourier terms or seasonal arma.
+#periodicity around ~40 years backs up oral traditions, but is not necessarily strong enough to warrant adding fourier terms or seasonal arma. We will investigate periodicity in a bit.
 
-## now we can run our best elev ~ SST model, adding influence from prior years. There are two arguments for adding in auto-correlation to a model. ar(p=x) says that the current value is correlated with past VALUES for x number of years. ma(q=x) says that the current value is correlated with past SHOCKS, or large CHANGES in value from the expected/mean value, for x number of years. arma(p = , q = ) just combines both. We can determine our p and q values from our ACF and PACF results.
+## now we can run our best elev ~ SST model, adding influence from prior years. There are two arguments for adding in auto-correlation to a model. ar(p=x) says that the current value is correlated with past VALUES of x prior years. ma(q=x) says that the current value is correlated with past SHOCKS, or large CHANGES in value from the expected/mean value, from x prior years. arma(p = , q = ) just combines both. We can determine our p and q values from our ACF and PACF results.
 
 #because we have a big spike in correlation for the previous year, plus a small correlation with the prior year in PACF; and a smooth taper in ACF, we can see that what matters most strongly is the VALUE of the prior year. If there were multiple spikes before taper in ACF, then we might pay more attention to our q value for ma().
 
@@ -295,6 +423,80 @@ loo(mld_Long, mld_Longar, mld_Longma, mld_Longarma, compare = TRUE)
 # mld_Longar     -4.1       3.4 
 # mld_Longma   -405.7      30.9 
 # mld_Long     -998.7      42.5
+
+##Longarma is best!
+
+```
+
+### Model Diagnostics Figure (assisted by Claude Code)
+```{r figS1_diagnostics, fig.width = 7.5, fig.height = 8}
+mld_Longarma <- readRDS("Models/mld_Longarma.rds")
+
+# Panel A: Trace plots
+s1a <- mcmc_trace(mld_Longarma,
+                  pars = c("b_Intercept", "b_Seki_Int", "b_Palmer_Int",
+                           "b_Davis5", "sigma", "ar[1]", "ma[1]"),
+                  facet_args = list(ncol = 1)) +
+  labs(title = "A. Trace plots") +
+  theme_paashi(base_size = 7)
+
+# Panel B: Posterior predictive density overlay
+s1b <- pp_check(mld_Longarma, ndraws = 100, type = "dens_overlay") +
+  labs(title = "B. Posterior predictive check") +
+  theme_paashi(base_size = 7)
+
+# Panel C: ACF posterior predictive check
+yrep   <- posterior_predict(mld_Longarma, ndraws = 200)
+y_obs  <- mld_Longarma$data$elev
+acf_obs_vals <- acf(y_obs[!is.na(y_obs)], lag.max = 20, plot = FALSE)$acf[,,1]
+
+acf_reps <- apply(yrep[1:200, !is.na(y_obs)], 1, function(y) {
+  acf(y, lag.max = 20, plot = FALSE)$acf[,,1]
+})
+
+acf_rep_df <- as.data.frame(t(acf_reps)) %>%
+  mutate(draw = row_number()) %>%
+  pivot_longer(-draw, names_to = "lag", values_to = "acf") %>%
+  mutate(lag = as.integer(gsub("V", "", lag)) - 1)
+
+acf_obs_df <- data.frame(lag = 0:20, acf = acf_obs_vals)
+
+s1c <- ggplot() +
+  geom_line(data = acf_rep_df, aes(x = lag, y = acf, group = draw),
+            alpha = 0.08, color = "gray50") +
+  geom_line(data = acf_obs_df, aes(x = lag, y = acf),
+            color = "black", linewidth = 0.8) +
+  labs(x = "Lag (years)", y = "Autocorrelation",
+       title = "C. Posterior predictive ACF check",
+       subtitle = "Black = observed; gray = simulated") +
+  theme_paashi(base_size = 7)
+
+# Panel D: LOO Pareto k diagnostics
+loo_longarma <- loo(mld_Longarma)
+k_values <- loo_longarma$diagnostics$pareto_k
+k_df <- data.frame(obs = seq_along(k_values), k = k_values)
+
+s1d <- ggplot(k_df, aes(x = obs, y = k)) +
+  geom_point(size = 0.3, alpha = 0.4, color = col_model_inner) +
+  geom_hline(yintercept = 0.5, linetype = "dashed", color = "orange",
+             linewidth = 0.4) +
+  geom_hline(yintercept = 0.7, linetype = "dashed", color = "red",
+             linewidth = 0.4) +
+  annotate("text", x = nrow(k_df) * 0.85, y = 0.55,
+           label = "k = 0.5 (caution)", size = 2.2, color = "orange") +
+  annotate("text", x = nrow(k_df) * 0.85, y = 0.75,
+           label = "k = 0.7 (unreliable)", size = 2.2, color = "red") +
+  labs(x = "Observation", y = "Pareto k",
+       title = "D. LOO-CV Pareto k diagnostics",
+       subtitle = paste0("All ", nrow(k_df), " observations below 0.5")) +
+  theme_paashi(base_size = 7)
+
+figS1 <- (s1a | (s1b / s1c / s1d)) +
+  plot_layout(widths = c(1, 1)) +
+  plot_annotation(
+    title = "Supplementary Figure S1: Model Diagnostics (mld_Longarma)")
+figS1
+## save_fig(figS1, "Figure_S1_Diagnostics.tiff", width_mm = 190, height_mm = 220)
 ```
 
 ## Continue Model Testing
@@ -425,21 +627,223 @@ blind_preds$year_bp  <- clim_train_blind$Year_B2005
 blind_preds$elev_obs <- clim_train_blind$elev_obs
 
 ggplot(blind_preds, aes(x = year_bp)) +
-  geom_ribbon(aes(ymin = Q2.5, ymax = Q97.5), fill = "skyblue", alpha = 0.4) +
-  geom_line(aes(y = elev_obs), color = "black",     linewidth = 0.4, alpha = 0.4) +
+  geom_ribbon(aes(ymin = Q2.5, ymax = Q97.5), fill = col_model_ribbon, alpha = 0.4) +
+  geom_line(aes(y = elev_obs), color = col_observed, linewidth = 0.4, alpha = 0.4) +
   geom_smooth(aes(y = elev_obs), method = "loess", span = 500 / nrow(blind_preds),
-              color = "black", linewidth = 0.9, se = FALSE) +
-  geom_line(aes(y = Estimate), color = "steelblue", linewidth = 0.8) +
+              color = col_observed, linewidth = 0.9, se = FALSE) +
+  geom_line(aes(y = Estimate), color = col_model_line, linewidth = 0.8) +
   labs(x = "Years Before 2005", y = "Lake Elevation (MaSL)",
        title = "Full Model: Blind Prediction of Training Period (elev = NA)",
        subtitle = "SST-driven mean only; ARMA initialized at zero (same as hindcast)") +
-  theme_minimal()
+  theme_paashi()
+
+```
+
+## Exploring Periodicity (some assistance from Claude Code)
+```{r exploring_periodicity}
+## There is still a lot of noise in lake elevations (represented in our CIs), even when predicting from our current SST sets and with ARMA. Arma helps with understanding persistence of lake levels, but does not EXPLAIN deviations from the mean. When we actually look at a plot of lake elevation and listen to oral traditions, we know that the lake fluctuates year to year and has decadal and "generational" patterns. We should examine these patterns to see if we can explain shorter term variation / noise before we model deep into the past.
+
+##Visual check: plot observed lake elevations with a line representing flood level; note ~decadal fluctuations and "generational" flood events.
+clim <- clim[order(clim$Year_B2005), ] #make double sure clim is read in order of year
+
+drainage_level <- 64.5
+obs_elev <- clim %>% filter(!is.na(elev))
+
+ggplot(obs_elev, aes(x = Calendar_Year)) +
+  geom_line(aes(y = elev), color = "gray70", linewidth = 0.3) +
+  geom_line(aes(y = pmax(elev, drainage_level)),
+            color = col_observed, linewidth = 0.4) +
+  geom_hline(yintercept = drainage_level, color = col_observed,
+             linewidth = 0.3, linetype = "solid") +
+  annotate("text", x = max(obs_elev$Calendar_Year) + 5, y = drainage_level + 0.3,
+           label = "64.5 MaSL — Drainage Level",
+           size = 2.5, hjust = 1, color = "gray40") +
+  labs(x = "Calendar Year AD", y = "Water Surface Elevation (MaSL)",
+       title = "Observed Tulare Lake Elevation — Drainage Periods Highlighted") +
+  theme_paashi()
+
+
+##check longer acf and pacf to see if multi-decade patterns exist
+y <- clim$elev
+y_complete <- stats::na.omit(y) #acf and pacf will not work if there are NAs
+
+acf(y_complete, lag.max = 100, main = "century ACF of elev")
+pacf(y_complete, lag.max = 100, main = "century PACF of elev")
+
+#check periodogram to see if there are strong frequencies/periodicities in the data
+spec.pgram(y_complete, log = "no", main = "Periodogram")
+
+# Smoothed periodogram plotted with x-axis in years. Focus on periods >= 10 years where the interesting structure is
+sp <- spec.pgram(y_complete, spans = c(7, 7), plot = FALSE)
+sp_period <- 1 / sp$freq
+sp_mask <- sp_period >= 10 & sp_period <= 200
+plot(sp_period[sp_mask], sp$spec[sp_mask], type = "l",
+     xlab = "Period (years)", ylab = "Spectrum",
+     main = "Smoothed Periodogram (10–200 year periods)")
+## Two clear peaks at ~35-40 years and ~70-80 years. The 70-80 year peak is likely the harmonic (double) of the ~40-year cycle. Rise at 150+ is century-scale variance, probably SST-driven.
+
+# AR-based spectrum for comparison
+sp_ar <- spec.ar(y_complete, plot = FALSE)
+sp_ar_period <- 1 / sp_ar$freq
+sp_ar_mask <- sp_ar_period >= 10 & sp_ar_period <= 200
+plot(sp_ar_period[sp_ar_mask], sp_ar$spec[sp_ar_mask], type = "l",
+     xlab = "Period (years)", ylab = "Spectrum",
+     main = "AR-fitted Spectral Density (10–200 year periods)")
+# Smooth curve with no peaks. So, the peaks in the other periodogram are NOT explained by AR(1) persistence, suggesting periodicity beyond what our ARMA(1,1) model captures.
+
+##Now let's assess the flood data quantitatively:
+
+# Flood recurrence: how often does elev exceed 64.5m? min_gap_years: floods separated by fewer than this many years are grouped as one event to account for 1-2 year dips during a wet period
+flood_threshold <- 64.5
+min_gap_years <- 5
+flood_years <- which(y_complete > flood_threshold)
+flood_starts <- flood_years[c(TRUE, diff(flood_years) > min_gap_years)]
+flood_gaps <- diff(flood_starts)
+cat("Number of flood events (min gap =", min_gap_years, "years):", length(flood_starts), "\n")
+cat("Mean return interval:", round(mean(flood_gaps), 1), "years\n")
+cat("Median return interval:", round(median(flood_gaps), 1), "years\n")
+cat("Range:", min(flood_gaps), "-", max(flood_gaps), "years\n")
+hist(flood_gaps, breaks = 15, main = paste0("Flood Return Intervals (elev > ", flood_threshold, "m, min gap = ", min_gap_years, "yr)"),
+     xlab = "Years between flood events", col = "skyblue")
+# Result: 51 flood events over ~2,000 years. Mean return = 39.4 years, median = 32 years. Mode around 20-30 years. Right-skewed: most floods are generational (~25-40 years apart) but some gaps stretch to 80-120 years. Consistent with oral traditions of "once a generation" flooding. The right skew may reflect prolonged drought periods.
+
+# Next: check if the ~40-year periodicity survives after removing SST forcing and AR(1)
+# persistence. If it does, it's genuine cyclicity in the lake system itself.
+mld_Longarma <- readRDS("Models/mld_Longarma.rds")
+
+# Residual periodograms: by examining the periodicity of residuals, we are looking at the periodicity of effects NOT explained by the models. Peaks that survive in residuals represent  structure the model does not capture
+
+arma_resids <- residuals(mld_Longarma, type = "ordinary")[, "Estimate"]
+
+sp_resid <- spec.pgram(arma_resids, spans = c(7, 7), plot = FALSE)
+sp_resid_period <- 1 / sp_resid$freq
+sp_resid_mask <- sp_resid_period >= 10 & sp_resid_period <= 200
+plot(sp_resid_period[sp_resid_mask], sp_resid$spec[sp_resid_mask], type = "l",
+     xlab = "Period (years)", ylab = "Spectrum",
+     main = "Residual Periodogram: SSTs + ARMA(1,1) Model")
+# Result: ~35-40 year peak persists. neither SST forcing nor ARMA(1,1) persistence accounts for this cycle. Sharp peaks at ~10, 15, 20 years also emerge once ARMA strips away persistence.
+
+# Also check residuals from the non-ARMA model for comparison
+mld_Long <- readRDS("Models/mld_Long.rds")
+long_resids <- residuals(mld_Long, type = "ordinary")[, "Estimate"]
+
+sp_long_resid <- spec.pgram(long_resids, spans = c(7, 7), plot = FALSE)
+sp_long_period <- 1 / sp_long_resid$freq
+sp_long_mask <- sp_long_period >= 10 & sp_long_period <= 200
+plot(sp_long_period[sp_long_mask], sp_long_resid$spec[sp_long_mask], type = "l",
+     xlab = "Period (years)", ylab = "Spectrum",
+     main = "Residual Periodogram: SSTs Only Model")
+# Result: similar peaks at ~35-40 and ~70-80 years, but overall power is ~20x higher because autocorrelation remains in these residuals. The short-period spikes (10-20 yr) are present but small because arma is not accounting for persistence.
+
+## Wavelet analysis — shows how periodicity changes over time
+# install.packages("WaveletComp") # if not installed
+library(WaveletComp)
+
+# Build a data frame for WaveletComp (needs a column named for the series)
+wavelet_df <- data.frame(elev = y_complete)
+wt <- analyze.wavelet(wavelet_df, "elev",
+                       loess.span = 0,    # no detrending (we want to see all structure)
+                       dt = 1,            # 1-year time step
+                       dj = 1/20,         # frequency resolution
+                       lowerPeriod = 8,   # minimum period to examine
+                       upperPeriod = 128, # maximum period
+                       make.pval = TRUE,  # significance testing
+                       n.sim = 100)       # Monte Carlo simulations for significance
+
+wt.image(wt, color.key = "quantile",
+         main = "Wavelet Power Spectrum of Lake Elevation",
+         periodlab = "Period (years)",
+         timelab = "Year index (0 = most recent)")
+
+# Average wavelet power across time — shows which periods are strongest overall
+wt.avg(wt, main = "Average Wavelet Power by Period")
+
+# Wavelet results: The heatmap (x = time, y = period, color = power) shows where the ~32-40 year cycle is active across the 2,000-year record. White contour lines mark statistically significant regions (p < 0.05 vs red noise). The average wavelet power plot confirms a significant peak around 32-40 years, consistent with periodogram and flood recurrence findings. The cycle is quasi-periodic it recurs on roughly that timescale but is not perfectly regular throughout the record.
+
+```
+
+## PDO/ENSO Testing
+```{r pdo_enso_test}
+# Our century-scale SSTs force long-term mean lake levels. ARMA(1,1) accounts for year-to-year persistence because the basin buffers swings in rainfall. But there are still year-over-year fluctuations and periodicity that our models do not explain.
+
+# Based on contemporary climate science, PDO (Pacific Decadal Oscillation) and ENSO (El Nino-Southern Oscillation) likely drive those year-over-year fluctuations. They are the annually resolved versions of the same Pacific climate signals our century-scale proxies show
+# Palmer_Int (~600yr resolution) = long-term mean of western equatorial Pacific, where ENSO operates; ~7 year cycles
+# Seki_Int (~400yr resolution) = long-term mean of NE Pacific / California margin, where PDO operates; ~20-30 year cycles
+
+# Let's add annually resolved PDO and ENSO records as predictors and check if they explain what we are seeing. These only cover ~1,000 years, so we cannot use them for model training or predictions.
+# Sources: MacDonald & Case 2005 (PDO, 993-1996 CE), Li et al. 2011 (ENSO, 900-2002 CE)
+
+# Filter to rows where all predictors + PDO + ENSO are available (~1,000 years)
+clim %>%
+  filter(!is.na(elev), !is.na(Seki_Int), !is.na(Palmer_Int),
+         !is.na(Davis5), !is.na(PDO), !is.na(ENSO)) %>%
+  arrange(Year_B2005) -> clim_test
+
+cat("Diagnostic subset:", nrow(clim_test), "rows\n")
+cat("Calendar year range:", max(clim_test$Calendar_Year), "to", min(clim_test$Calendar_Year), "CE\n")
+
+# Fit two models on the same years for comparison
+# Model 1: baseline (SSTs + ARMA only)
+mld_test_longarma <- brm(elev ~ Seki_Int + Palmer_Int + Davis5 + arma(p = 1, q = 1, time = Year_B2005),
+    data = clim_test, family = gaussian(),
+    prior = paashi_priors_arma,
+    chains = 4, iter = 4000, warmup = 2000,
+    seed = 2025,
+    control = list(adapt_delta = 0.95))
+
+# Model 2: SSTs + PDO + ENSO + ARMA
+mld_test_pdo_enso <- brm(elev ~ Seki_Int + Palmer_Int + Davis5 + PDO + ENSO + arma(p = 1, q = 1, time = Year_B2005),
+    data = clim_test, family = gaussian(),
+    prior = paashi_priors_arma,
+    chains = 4, iter = 4000, warmup = 2000,
+    seed = 2025,
+    control = list(adapt_delta = 0.95))
+
+# LOO comparison
+loo(mld_test_longarma, mld_test_pdo_enso)
+
+# summaries
+summary(mld_test_longarma)
+summary(mld_test_pdo_enso)
+
+# Blind prediction comparison: set elev = NA so ARMA starts from zero (same as hindcast)
+clim_test_blind <- clim_test %>% mutate(elev_obs = elev, elev = NA)
+
+blind_base <- as.data.frame(predict(mld_test_longarma, newdata = clim_test_blind))
+blind_base$year_bp  <- clim_test_blind$Year_B2005
+blind_base$elev_obs <- clim_test_blind$elev_obs
+
+blind_pdo_enso <- as.data.frame(predict(mld_test_pdo_enso, newdata = clim_test_blind))
+blind_pdo_enso$year_bp  <- clim_test_blind$Year_B2005
+blind_pdo_enso$elev_obs <- clim_test_blind$elev_obs
+
+ggplot(blind_base, aes(x = year_bp)) +
+  geom_ribbon(aes(ymin = Q2.5, ymax = Q97.5), fill = col_model_ribbon, alpha = 0.4) +
+  geom_line(aes(y = elev_obs), color = col_observed, linewidth = 0.3, alpha = 0.4) +
+  geom_line(aes(y = Estimate), color = col_model_line, linewidth = 0.5) +
+  labs(x = "Years Before 2005", y = "Lake Elevation (MaSL)",
+       title = "Blind Prediction: SSTs + ARMA(1,1) Only",
+       subtitle = "Black = observed; blue = predicted (elev = NA)") +
+  theme_paashi()
+
+ggplot(blind_pdo_enso, aes(x = year_bp)) +
+  geom_ribbon(aes(ymin = Q2.5, ymax = Q97.5), fill = col_model_ribbon, alpha = 0.4) +
+  geom_line(aes(y = elev_obs), color = col_observed, linewidth = 0.3, alpha = 0.4) +
+  geom_line(aes(y = Estimate), color = col_model_line, linewidth = 0.5) +
+  labs(x = "Years Before 2005", y = "Lake Elevation (MaSL)",
+       title = "Blind Prediction: SSTs + PDO + ENSO + ARMA(1,1)",
+       subtitle = "Black = observed; blue = predicted (elev = NA)") +
+  theme_paashi()
+
+## PDO is strongly related to lake elevation (+0.79m per unit PDO [0.68, 0.91]), ENSO adds +0.20m per unit [0.16, 0.25]. LOO confirms both improve the model by a lot (~122 elpd over just multi-century SSTs with arma). The blind prediction shows that adding annually-resolved PDO and ENSO does not change the predicted mean (both models produce the same SST-driven trend), but it does help explain much more of the year-over-year noise that our century-scale SSTs miss.
+
+# These records only cover ~1,000 years, so they cannot be used for the 20,000-year hindcast. The year-over-year fluctuations they explain are represented in the CIs of the hindcast.
 
 ```
 
 ## Using Models to Predict Reality
 ```{r predictions}
-## let's do an "out of sample" prediction using Longarma.
+## Now that we understand what our model can tell us and what our CIs represent, let's do an out of sample prediction using Longarma.
 #there are several ways to do a posterior prediction. posterior_predict() runs a full simulation based on a trained model, with thousands of draws, outputting every result. This is usually used to compare a model to actual observed results. predict() runs posterior_predict, but then just outputs the mean and upper/lower 95; it is most useful if you just want to go straight to plotting results. posterior_epred ("expected prediction") runs a simulation based on a trained model, gets the mean, then makes predictions based on the mean. This is typically used to make posterior predictions on large sets of new data, since it is significantly lighter than running a full posterior_predict, given that posterior_epred() is just relying on the mean of an already trained model, whereas posterior_predict() or predict() would run thousands of predictions on all the new data, then return the mean.Lastly, fitted() runs posterior_epred() and then summarizes it, much as predict does for posterior_predict.
 
 #First, let's use predict() to visualize how good the model is when arma has observations to work with. This will not have new data, it is just to compare the model against observations
@@ -480,8 +884,6 @@ Longarma_Fitted <- as.data.frame(fitted(mld_Longarma, newdata = newdata_pred))
 colnames(Longarma_Fitted) <- c("Fit_Est", "Fit_SE", "Fit_Q2.5", "Fit_Q97.5")
 Longarma_Fitted$year_bp <- newdata_pred$Year_B2005
 
-write.csv(Longarma_Fitted, "Processed Data/Longarma_Fitted.csv", row.names = FALSE)
-
 # Full prediction intervals, uncertainty + variability
 Longarma_FullPred <- as.data.frame(predict(mld_Longarma, newdata = newdata_pred))
 colnames(Longarma_FullPred) <- c("Pred_Est", "Pred_SE", "Pred_Q2.5", "Pred_Q97.5")
@@ -497,112 +899,141 @@ hindcast <- read.csv("Processed Data/Hindcast_Full.csv")
 # two-ribbon plot: outer = prediction interval, inner = credible interval for mean
 ggplot(hindcast, aes(x = year_bp)) +
   geom_ribbon(aes(ymin = Pred_Q2.5, ymax = Pred_Q97.5),
-              fill = "lightblue", alpha = 0.3) +
+              fill = col_model_ribbon, alpha = 0.3) +
   geom_ribbon(aes(ymin = Fit_Q2.5, ymax = Fit_Q97.5),
-              fill = "steelblue", alpha = 0.5) +
-  geom_line(aes(y = Fit_Est), color = "darkblue", linewidth = 0.5) +
-  geom_line(aes(y = elev_obs), color = "red", linewidth = 0.5,
+              fill = col_model_inner, alpha = 0.5) +
+  geom_line(aes(y = Fit_Est), color = col_model_line, linewidth = 0.5) +
+  geom_line(aes(y = elev_obs), color = col_observed, linewidth = 0.5,
             alpha = 0.7, na.rm = TRUE) +
   labs(x = "Years Before 2005", y = "Lake Elevation (MaSL)",
        title = "Lake Elevation Hindcast: Expected Trend and Prediction Intervals",
-       subtitle = "Inner band (dark) = 95% CI for mean; Outer band (light) = 95% prediction interval; Red = observed") +
-  theme_minimal()
+       subtitle = "Inner band (dark) = 95% CI for mean; Outer band (light) = 95% prediction interval; Dark = observed") +
+  theme_paashi()
 
 ```
 
-##Plotting Model Results
-```{r plotting results}
+## Publication Figures
 
-##Load data
-read.csv("Processed Data/Longarma_Predict.csv") -> Longarma_Predict
-read.csv("Processed Data/Hindcast_Full.csv") -> hindcast
-read.csv("Processed Data/Lake12All.csv") -> arch
-read.csv("Processed Data/Model_Outputs_Combined.csv") -> combo
+### Full Hindcast Figure (assisted by Claude Code)
+```{r fig4_hindcast, fig.width = 7.5, fig.height = 5}
+hindcast <- read.csv("Processed Data/Hindcast_Full.csv")
+training_boundary <- 2006
+pleis_holo        <- 11700
 
-##Plot some quick visualizations
-
-# Hindcast with dual ribbons: outer = prediction interval, inner = fitted CI
-ggplot(hindcast, aes(x = year_bp)) +
+# Panel A: Holocene (0-12,000 yr BP)
+fig4a <- ggplot(hindcast %>% filter(year_bp <= 12000), aes(x = year_bp)) +
+  annotate("rect", xmin = 0, xmax = training_boundary,
+           ymin = -Inf, ymax = Inf, fill = col_train_bg, alpha = 0.6) +
   geom_ribbon(aes(ymin = Pred_Q2.5, ymax = Pred_Q97.5),
-              fill = "lightblue", alpha = 0.3) +
+              fill = col_model_ribbon, alpha = 0.4) +
   geom_ribbon(aes(ymin = Fit_Q2.5, ymax = Fit_Q97.5),
-              fill = "steelblue", alpha = 0.5) +
-  geom_line(aes(y = Fit_Est), color = "darkblue", linewidth = 0.5) +
-  geom_line(aes(y = elev_obs), color = "red", linewidth = 0.5,
+              fill = col_model_inner, alpha = 0.5) +
+  geom_line(aes(y = Fit_Est), color = col_model_line, linewidth = 0.4) +
+  geom_line(aes(y = elev_obs), color = col_observed, linewidth = 0.3,
             alpha = 0.7, na.rm = TRUE) +
-  labs(x = "Years Before 2005", y = "Lake Elevation (MaSL)",
-       title = "Full Hindcast with Prediction Intervals",
-       subtitle = "Inner band = 95% CI for mean; Outer band = 95% prediction interval; Red = observed") +
-  theme_minimal()
+  geom_vline(xintercept = training_boundary, linetype = "dashed",
+             color = "gray40", linewidth = 0.3) +
+  geom_vline(xintercept = pleis_holo, linetype = "dotted",
+             color = col_pleis_line, linewidth = 0.3) +
+  annotate("text", x = training_boundary + 200, y = 69,
+           label = "Training\nboundary", size = 2.2, hjust = 0, color = "gray40") +
+  annotate("text", x = pleis_holo - 200, y = 69,
+           label = "Pleistocene-\nHolocene\nboundary", size = 2.2,
+           hjust = 1, color = col_pleis_line) +
+  scale_x_continuous(labels = comma_format(),
+                     breaks = seq(0, 12000, by = 2000)) +
+  coord_cartesian(ylim = c(50, 72)) +
+  labs(x = NULL, y = "Lake Elevation (m asl)",
+       title = "A. Holocene (0\u201312,000 yr BP)") +
+  theme_paashi()
 
-# Compare 12,000 years of predicted levels vs archaeological reconstruction
-ggplot(combo, aes(x = year_b2005))+
-  geom_line(aes(y = arch_model), color = "red", linewidth = 2)+
-  geom_ribbon(aes(ymin = Fitted_Q2.5, ymax = Fitted_Q97.5), fill = "skyblue", alpha = 0.5)+
-  geom_smooth(aes(y = Fitted_Estimate), method = "gam", formula = y ~ s(x, k = 50), linewidth = 2)+
-  xlim(0, 13000)
+# Panel B: Full range (0-23,000 yr BP)
+fig4b <- ggplot(hindcast, aes(x = year_bp)) +
+  annotate("rect", xmin = 0, xmax = training_boundary,
+           ymin = -Inf, ymax = Inf, fill = col_train_bg, alpha = 0.6) +
+  geom_ribbon(aes(ymin = Pred_Q2.5, ymax = Pred_Q97.5),
+              fill = col_model_ribbon, alpha = 0.4) +
+  geom_ribbon(aes(ymin = Fit_Q2.5, ymax = Fit_Q97.5),
+              fill = col_model_inner, alpha = 0.5) +
+  geom_line(aes(y = Fit_Est), color = col_model_line, linewidth = 0.4) +
+  geom_line(aes(y = elev_obs), color = col_observed, linewidth = 0.3,
+            alpha = 0.7, na.rm = TRUE) +
+  geom_vline(xintercept = training_boundary, linetype = "dashed",
+             color = "gray40", linewidth = 0.3) +
+  geom_vline(xintercept = pleis_holo, linetype = "dotted",
+             color = col_pleis_line, linewidth = 0.3) +
+  annotate("text", x = 18000, y = 70,
+           label = "Model trained on Holocene data;\ndeeper predictions carry\ngreater uncertainty",
+           size = 2.0, color = "gray40", fontface = "italic") +
+  scale_x_continuous(labels = comma_format(),
+                     breaks = seq(0, 22000, by = 4000)) +
+  coord_cartesian(ylim = c(50, 72)) +
+  labs(x = "Years Before Present (cal yr BP)",
+       y = "Lake Elevation (m asl)",
+       title = "B. Full reconstruction (0\u201323,000 yr BP)") +
+  theme_paashi()
 
-# Full ~30,000 year predictions with observed overlay
-ggplot(combo, aes(x = year_b2005))+
-  geom_line(aes(y = elev_obs), color = "red", linewidth = 2, alpha = .5)+
-  geom_ribbon(aes(ymin = Fitted_Q2.5, ymax = Fitted_Q97.5), fill = "skyblue", alpha = 0.5)+
-  geom_smooth(aes(y = Fitted_Estimate), method = "gam", formula = y ~ s(x, k = 50), linewidth = 2)
-
-
-## note caveats: further back past 11.7kya, we are beginning to go back into the pleistocene. the model isn't built on pleistocene lake elevations, so may not account for things like glacial melt
-
+fig4 <- fig4a / fig4b +
+  plot_annotation(
+    title = "Bayesian Hindcast of Tulare Lake Elevation",
+    subtitle = paste0("Dark ribbon = 95% CI for expected trend (fitted);",
+                      "  Light ribbon = 95% prediction interval;",
+                      "  Dark line = observed data"))
+fig4
+## save_fig(fig4, "Figure_4_Hindcast.tiff", width_mm = 190, height_mm = 160)
 ```
 
-## ARMA Autocorrelation Test
-```{r arma_autocor_test}
-# Identify the training boundary
-train_max <- max(mld_Longarma$data$Year_B2005)
+### Archaeological Reconstruction Comparison (Assisted by Claude Code)
+```{r fig5_arch_comparison, fig.width = 7.5, fig.height = 3.5}
+combo <- read.csv("Processed Data/Model_Outputs_Combined.csv")
+arch  <- read.csv("Processed Data/Lake12All.csv")
+# hindcast has full prediction intervals; combo only has them for the training period
+hindcast_holo <- hindcast %>% filter(year_bp <= 12000)
+combo_holo <- combo %>% filter(year_b2005 <= 12000)
+arch_holo  <- arch %>% filter(ybp <= 12000)
 
-# Build newdata: training period + first 100 years past it
-newdata_arma_test <- clim %>%
-  select(Year_B2005, Seki_Int, Palmer_Int, Davis5, elev) %>%
-  filter(!is.na(Seki_Int), !is.na(Palmer_Int), !is.na(Davis5)) %>%
-  filter(Year_B2005 <= train_max + 100) %>%
-  arrange(Year_B2005)
-
-# Identify which rows are out-of-sample
-n_train <- sum(newdata_arma_test$Year_B2005 <= train_max)
-oos_rows <- (n_train + 1):nrow(newdata_arma_test)
-
-# Default predict
-pred_default_full <- as.data.frame(predict(mld_Longarma, newdata = newdata_arma_test))
-colnames(pred_default_full) <- c("Est", "SE", "Q2.5", "Q97.5")
-pred_default <- pred_default_full[oos_rows, ]
-pred_default$method <- "Default"
-pred_default$year_bp <- newdata_arma_test$Year_B2005[oos_rows]
-
-# incl_autocor = FALSE (ARMA ignored)
-pred_off_full <- as.data.frame(
-  predict(mld_Longarma, newdata = newdata_arma_test, incl_autocor = FALSE)
-)
-colnames(pred_off_full) <- c("Est", "SE", "Q2.5", "Q97.5")
-pred_off <- pred_off_full[oos_rows, ]
-pred_off$method <- "incl_autocor = FALSE"
-pred_off$year_bp <- newdata_arma_test$Year_B2005[oos_rows]
-
-# Training period tail: last 100 years of in-sample predictions
-train_tail_full <- as.data.frame(predict(mld_Longarma))
-train_tail_full$year_bp <- mld_Longarma$data$Year_B2005
-train_tail <- train_tail_full %>%
-  filter(year_bp >= train_max - 100) %>%
-  rename(Est = Estimate, SE = Est.Error, Q2.5 = Q2.5, Q97.5 = Q97.5) %>%
-  mutate(method = "Training / in-sample")
-
-# Combine for plotting
-plot_data <- bind_rows(train_tail, pred_default, pred_off)
-
-ggplot(plot_data, aes(x = year_bp, color = method, fill = method)) +
-  geom_ribbon(aes(ymin = Q2.5, ymax = Q97.5), alpha = 0.15, color = NA) +
-  geom_line(aes(y = Est, linetype = method), linewidth = 0.8) +
-  scale_linetype_manual(values = c("Training / in-sample" = "solid",
-                                   "Default" = "solid",
-                                   "incl_autocor = FALSE" = "dashed")) +
-  theme_minimal()
+fig5 <- ggplot() +
+  annotate("rect", xmin = 0, xmax = training_boundary,
+           ymin = -Inf, ymax = Inf, fill = col_train_bg, alpha = 0.6) +
+  # Archaeological raw evidence
+  geom_point(data = arch_holo, aes(x = ybp, y = elev),
+             color = "gray75", size = 0.1, alpha = 0.3) +
+  # Full prediction interval from hindcast data
+  geom_ribbon(data = hindcast_holo,
+              aes(x = year_bp, ymin = Pred_Q2.5, ymax = Pred_Q97.5),
+              fill = col_model_ribbon, alpha = 0.5) +
+  # Model trend
+  geom_line(data = combo_holo,
+            aes(x = year_b2005, y = Fitted_Estimate),
+            color = col_model_line, linewidth = 0.4, alpha = 0.8) +
+  # Archaeological reconstruction
+  geom_line(data = combo_holo %>% filter(!is.na(arch_model)),
+            aes(x = year_b2005, y = arch_model),
+            color = col_arch, linewidth = 0.6, alpha = 0.85) +
+  # Observed lake elevation
+  geom_line(data = combo_holo %>% filter(!is.na(elev_obs)),
+            aes(x = year_b2005, y = elev_obs),
+            color = col_observed, linewidth = 0.25, alpha = 0.5) +
+  geom_vline(xintercept = training_boundary, linetype = "dashed",
+             color = "gray40", linewidth = 0.3) +
+  geom_vline(xintercept = pleis_holo, linetype = "dotted",
+             color = col_pleis_line, linewidth = 0.3) +
+  annotate("text", x = pleis_holo - 200, y = 71,
+           label = "Pleistocene-\nHolocene boundary",
+           size = 2.0, hjust = 1, color = col_pleis_line) +
+  scale_x_continuous(labels = comma_format(),
+                     breaks = seq(0, 12000, by = 2000)) +
+  coord_cartesian(ylim = c(48, 73)) +
+  labs(x = "Years Before Present (cal yr BP)",
+       y = "Lake Elevation (m asl)",
+       title = "Model Reconstruction vs. Archaeological Evidence",
+       subtitle = paste0("Blue ribbon = 95% prediction interval;  ",
+                         "Blue line = expected trend;  ",
+                         "Terra cotta = archaeological reconstruction (Negrini et al.);  ",
+                         "Gray = observed")) +
+  theme_paashi()
+fig5
+## save_fig(fig5, "Figure_5_Arch_Comparison.tiff", width_mm = 190, height_mm = 100)
 ```
 
 ## Session Info
