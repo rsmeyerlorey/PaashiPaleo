@@ -7,6 +7,8 @@
 *~
 .DS_Store
 Thumbs.db
+.RDataTmp*
+.claude/
 
 # Rendered output (regenerate from RMD)
 *.html
