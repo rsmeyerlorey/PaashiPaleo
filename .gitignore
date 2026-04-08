@@ -12,3 +12,39 @@ Thumbs.db
 
 # Rendered output (regenerate from RMD)
 *.html
+
+# Figures (too large; in publications)
+Figures/
+
+# Relevant readings (PDFs)
+Relevant Readings/
+
+# Exploratory / loose RMDs and scripts (not part of core pub workflow)
+PDO_ENSO_Exploratory.Rmd
+Periodicity_Physics_Compact.Rmd
+Water_Balance_Exploration.Rmd
+brms_arma.qmd
+modify_doc.py
+
+# Exploratory / diagnostic models
+Models/mld_test_*.rds
+Models/mv_pdo.rds
+Models/mv_sst.rds
+Models/climate_projections*.rds
+Models/climate_scenarios.rds
+Models/sensitivity_*.rds
+Models/wb_*.rds
+
+# Raw data / download scripts not needed for reproducibility
+Raw Data/ENSO_instrumental.csv
+Raw Data/ENSO_raw.txt
+Raw Data/PDO_instrumental.csv
+Raw Data/PDO_raw.txt
+Raw Data/ORNL_HUC8/
+Raw Data/ORNL_Tulare_Basin_Projections.csv
+Raw Data/Adams_Tulare_Lake_WB_Model_0-2005_8APRIL15.xlsx
+Raw Data/download_ornl_extended.py
+Raw Data/retry_failed.py
+Raw Data/retry_final6.py
+Raw Data/SST_Sources (1).md
+Raw Data/Sources Table (1).xlsx

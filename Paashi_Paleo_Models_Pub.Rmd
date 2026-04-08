@@ -28,6 +28,19 @@ library(maps)
 
 clim <- read.csv("Raw Data/ElevSSTs.csv")
 
+## SST Source Documentation
+
+#Seki_Int: Seki et al. (2002). "Millennial climate oscillations in NE Pacific surface waters over the last 82 kyr: New evidence from alkenones." Geophysical Research Letters, 29(23), 2144.
+#Core: ODP Site 1017, California Margin (34°32'N, 121°06'W, 955 m depth). Proxy: Alkenone Uk'37 SST. 82 kyr record; most recent ~28 kyr subset used.
+
+#Stott_Int: Stott et al. (2004). "Decline of surface temperature and salinity in the western tropical Pacific Ocean in the Holocene epoch." Nature, 431, 56-59.
+#Stott et al. (2007). "Southern Hemisphere and deep-sea warming led deglacial atmospheric CO2 rise and tropical warming." Science, 318(5849), 435-438.
+#Core: MD98-2176, western tropical Pacific (5°00'S, 133°26'E, 2382 m depth). Proxy: G. ruber Mg/Ca SST (Anand & Elderfield 2003 calibration). 271 measurements, ~50-100 yr resolution, ~20 kyr coverage. Data source: NOAA Paleoclimatology archive (stott2007.txt).
+
+# Davis5: Seki et al. (2004). "Variation of alkenone sea surface temperature in the Sea of Okhotsk over the last 85 kyrs." Organic Geochemistry, 35(3), 347-354.
+#Accessed via: Davis et al. (2020). "Sea surface temperature across the Subarctic North Pacific and marginal seas through the past 20,000 years." Quaternary Science Reviews, 246, 106519.
+#Core: XP98 PC-2, Sea of Okhotsk (50°24'N, 148°19'E, 1258 m depth). Proxy: Alkenone Uk'37 SST. 46 measurements, ~300-500 yr resolution, ~25 kyr coverage.
+
 ```
 
 ## Publication Theme and Palette (assisted by Claude Code)
@@ -39,7 +52,7 @@ col_model_inner  <- "#4682B4"   # steel blue — fitted CI
 col_observed     <- "gray20"    # near-black — observed data
 col_arch         <- "#B85C38"   # terra cotta — archaeological reconstruction
 col_seki         <- "#D4930D"   # amber — Seki SST (California Margin)
-col_palmer       <- "#1B998B"   # teal — Palmer SST (W. Equatorial Pacific)
+col_stott        <- "#1B998B"   # teal — Stott SST (W. Equatorial Pacific)
 col_davis5       <- "#5B7B9A"   # slate blue — Davis5 SST (Sea of Okhotsk)
 col_train_bg     <- "#FFF8F0"   # faint warm — training window background
 col_pleis_line   <- "gray50"    # Pleistocene-Holocene boundary
@@ -88,7 +101,7 @@ dir.create("Figures", showWarnings = FALSE)
 
 par(mfrow = c(3, 2))
 plot(clim$Year_B2005, clim$Seki_Int, main = "Seki (NE Pacific, 28kya, ~400yr res)", pch = ".", xlim = c(0, 25000))
-plot(clim$Year_B2005, clim$Palmer_Int, main = "Palmer (W Eq Pacific, 23kya, ~600yr res)", pch = ".", xlim = c(0, 25000))
+plot(clim$Year_B2005, clim$Stott_Int, main = "Stott (W Eq Pacific, 20kya, ~50-100yr res)", pch = ".", xlim = c(0, 25000))
 plot(clim$Year_B2005, clim$Davis1, main = "Davis-1/Barron (NE Pacific, 15kya, ~100yr res)", pch = ".", xlim = c(0, 25000))
 plot(clim$Year_B2005, clim$Davis5, main = "Davis-5 (Okhotsk, 25kya, ~300yr res)", pch = ".", xlim = c(0, 25000))
 plot(clim$Year_B2005, clim$Isono_Int, main = "Isono (Japan, 15kya, ~20yr res) - EXCLUDED", pch = ".", xlim = c(0, 25000))
@@ -110,7 +123,7 @@ save_fig(fig_elev_hist, "Figure_S_Elevation_Histogram.tiff", height_mm = 90)
 ## Define Explicit Priors
 ```{r define_priors}
 ## Inspect what brms would choose as defaults for our final model
-default_priors <- get_prior(elev ~ Seki_Int + Palmer_Int + Davis5 + arma(p = 1, q = 1, time = Year_B2005),
+default_priors <- get_prior(elev ~ Seki_Int + Stott_Int + Davis5 + arma(p = 1, q = 1, time = Year_B2005),
   data = clim,
   family = gaussian())
 
@@ -140,7 +153,7 @@ paashi_priors_arma <- c(
 ```{r prior_predictive_check}
 # Fit model with sample_prior = "only" to draw from priors without seeing data to verify our priors are weakly informative but plausible
 mld_prior_only <- brm(
-  elev ~ Seki_Int + Palmer_Int + Davis5 +
+  elev ~ Seki_Int + Stott_Int + Davis5 +
     arma(p = 1, q = 1, time = Year_B2005),
   data = clim,
   family = gaussian(),
@@ -181,14 +194,14 @@ mld_Seki <- brm(elev ~ Seki_Int,
                 seed = 2025)
 summary(mld_Seki)
 
-# Palmer (Western Equatorial Pacific, ENSO-related signal)
-mld_Palmer <- brm(elev ~ Palmer_Int,
+# Stott (Western Equatorial Pacific, ENSO-related signal)
+mld_Stott <- brm(elev ~ Stott_Int,
                   data = clim,
                   family = gaussian(),
                   prior = paashi_priors,
                   chains = 4, iter = 3000, warmup = 1000,
                   seed = 2025)
-summary(mld_Palmer)
+summary(mld_Stott)
 
 # Davis1/Barron (NE Pacific, highest resolution among usable records)
 mld_Davis1 <- brm(elev ~ Davis1,
@@ -209,20 +222,20 @@ mld_Davis5 <- brm(elev ~ Davis5,
 summary(mld_Davis5)
 
 ## Compare Single-Predictor Models
-loo(mld_Seki, mld_Palmer, mld_Davis1, mld_Davis5, compare = TRUE)
+loo(mld_Seki, mld_Stott, mld_Davis1, mld_Davis5, compare = TRUE)
 #Model comparisons:
 #           elpd_diff se_diff
 #mld_Davis5   0.0       0.0  
 #mld_Davis1  -1.9       7.5  
-#mld_Palmer  -5.8       5.8  
+#mld_Stott  -19.7       5.6
 #mld_Seki   -21.0       6.2
 
 
 ## Combined-Predictor Models
 
-# mld_Long: Three longest records (for extended hindcast to ~23kya)
-# Seki (28kya) + Palmer (23kya) + Davis5 (25kya)
-mld_Long <- brm(elev ~ Seki_Int + Palmer_Int + Davis5,
+# mld_Long: Three longest records (for extended hindcast to ~20kya)
+# Seki (28kya) + Stott (20kya) + Davis5 (25kya)
+mld_Long <- brm(elev ~ Seki_Int + Stott_Int + Davis5,
                 data = clim,
                 family = gaussian(),
                 prior = paashi_priors,
@@ -231,9 +244,20 @@ mld_Long <- brm(elev ~ Seki_Int + Palmer_Int + Davis5,
 summary(mld_Long)
 saveRDS(mld_Long, file = "Models/mld_Long.rds")
 
+#Regression Coefficients:
+#          Estimate Est.Error l-95% CI u-95% CI Rhat Bulk_ESS Tail_ESS
+#Intercept    38.63      5.24    28.27    49.03 1.00     7768     6030
+#Seki_Int      0.36      0.14     0.09     0.63 1.00     9546     6037
+#Stott_Int     0.22      0.12    -0.02     0.46 1.00     8966     6557
+#Davis5        1.48      0.21     1.07     1.90 1.00     8344     6322
+
+#Further Distributional Parameters:
+#      Estimate Est.Error l-95% CI u-95% CI Rhat Bulk_ESS Tail_ESS
+#sigma     1.70      0.03     1.65     1.75 1.00     9636     5586
+
 # mld_Short: All four records (best fit, limited to ~15kya by Davis1)
-# Adds Davis1/Barron for improved fit within Holocene
-mld_Short <- brm(elev ~ Seki_Int + Palmer_Int + Davis5 + Davis1,
+# Adds Davis1 for improved fit within Holocene
+mld_Short <- brm(elev ~ Seki_Int + Stott_Int + Davis5 + Davis1,
                  data = clim,
                  family = gaussian(),
                  prior = paashi_priors,
@@ -256,11 +280,12 @@ summary(mld_Cal)
 
 ## Compare Combined Models
 loo(mld_Long, mld_Short, mld_Cal, compare = TRUE)
+
 #Model comparisons:
 #          elpd_diff se_diff
 #mld_Short   0.0       0.0  
-#mld_Long  -15.8       5.6  
-#mld_Cal   -26.1       7.3
+#mld_Long  -11.7       4.9  
+#mld_Cal   -17.2       6.1  
 
 ## Based off of these results, mld_Long looks like the way to go. It is not too terrible compared to mld_Short, and will allow us to predict much further back in time.
 
@@ -274,12 +299,12 @@ loo(mld_Long, mld_Short, mld_Cal, compare = TRUE)
 # Panel A: Pacific Basin map with SST core sites + Tulare Lake
 sites <- data.frame(
   name = c("Tulare Lake", "Seki et al.\n(California Margin)",
-           "Palmer & Pearson\n(W. Equatorial Pacific)",
+           "Stott et al.\n(W. Equatorial Pacific)",
            "Davis et al.\n(Sea of Okhotsk)"),
-  lon  = c(-119.5, -126.0, 159.0, 145.0),
-  lat  = c(35.9, 42.0, 0.0, 50.0),
+  lon  = c(-119.5, -121.1, 133.44, 148.32),
+  lat  = c(35.9, 34.53, -5.0, 50.4),
   type = c("lake", "sst", "sst", "sst"),
-  col  = c(col_observed, col_seki, col_palmer, col_davis5)
+  col  = c(col_observed, col_seki, col_stott, col_davis5)
 )
 
 world2 <- map_data("world2")
@@ -310,24 +335,24 @@ fig1a <- ggplot() +
 
 # Panel B: SST predictor time series
 sst_interp <- clim %>%
-  select(Year_B2005, Seki_Int, Palmer_Int, Davis5) %>%
+  select(Year_B2005, Seki_Int, Stott_Int, Davis5) %>%
   pivot_longer(-Year_B2005, names_to = "source", values_to = "sst_interp") %>%
   mutate(source = recode(source,
     "Seki_Int"   = "Seki (California Margin)",
-    "Palmer_Int" = "Palmer (W. Equatorial Pacific)",
+    "Stott_Int" = "Stott (W. Equatorial Pacific)",
     "Davis5"     = "Davis (Sea of Okhotsk)"))
 
 sst_raw <- clim %>%
-  select(Year_B2005, Seki_SST, Palmer_SST) %>%
+  select(Year_B2005, Seki_SST, Stott_SST) %>%
   pivot_longer(-Year_B2005, names_to = "source", values_to = "sst_raw") %>%
   filter(!is.na(sst_raw)) %>%
   mutate(source = recode(source,
     "Seki_SST"  = "Seki (California Margin)",
-    "Palmer_SST" = "Palmer (W. Equatorial Pacific)"))
+    "Stott_SST" = "Stott (W. Equatorial Pacific)"))
 
 sst_colors <- c(
   "Seki (California Margin)"       = col_seki,
-  "Palmer (W. Equatorial Pacific)"  = col_palmer,
+  "Stott (W. Equatorial Pacific)"  = col_stott,
   "Davis (Sea of Okhotsk)"          = col_davis5)
 
 fig1b <- ggplot() +
@@ -379,7 +404,7 @@ pacf(y_complete, main = "PACF of elev (NAs dropped)")
 
 ##model Long with previous year effects
 #ar(p = 1) for long, smooth persistence, good in hydrological models
-mld_Longar <- brm(elev ~ Seki_Int + Palmer_Int + Davis5 + ar(p = 1, time = Year_B2005),
+mld_Longar <- brm(elev ~ Seki_Int + Stott_Int + Davis5 + ar(p = 1, time = Year_B2005),
                  data = clim,
                  family = gaussian(),
                  prior = c(paashi_priors,
@@ -396,7 +421,7 @@ summary(mld_Longar)
 
 
 #ma(q = 1) does the deviation from the mean matter more than the actual value? Let's check ma
-mld_Longma <- brm(elev ~ Seki_Int + Palmer_Int + Davis5 + ma(q = 1, time = Year_B2005),
+mld_Longma <- brm(elev ~ Seki_Int + Stott_Int + Davis5 + ma(q = 1, time = Year_B2005),
                  data = clim,
                  family = gaussian(),
                  prior = c(paashi_priors,
@@ -412,7 +437,7 @@ summary(mld_Longma)
 #pp_check(mld_Longma, ndraws = 100)
 
 #arma(p = 1, q = 1) combines to see if both matter.
-mld_Longarma <- brm(elev ~ Seki_Int + Palmer_Int + Davis5 + arma(p = 1, q = 1, time = Year_B2005),
+mld_Longarma <- brm(elev ~ Seki_Int + Stott_Int + Davis5 + arma(p = 1, q = 1, time = Year_B2005),
                  data = clim,
                  family = gaussian(),
                  prior = paashi_priors_arma,
@@ -427,6 +452,22 @@ plot(mld_Longarma)
 pp_check(mld_Longarma, ndraws = 100)
 saveRDS(mld_Longarma, file = "Models/mld_Longarma.rds")
 readRDS("Models/mld_Longarma.rds") -> mld_Longarma
+
+#Correlation Structures:
+#      Estimate Est.Error l-95% CI u-95% CI Rhat Bulk_ESS Tail_ESS
+#ar[1]     0.84      0.02     0.80     0.87 1.00     5468     5435
+#ma[1]    -0.10      0.03    -0.16    -0.04 1.00     5574     6209
+
+#Regression Coefficients:
+#          Estimate Est.Error l-95% CI u-95% CI Rhat Bulk_ESS Tail_ESS
+#Intercept    42.38     16.92     9.97    75.06 1.00     5565     5392
+#Seki_Int      0.35      0.45    -0.54     1.25 1.00     7595     5499
+#Stott_Int     0.11      0.38    -0.64     0.86 1.00     7133     5680
+#Davis5        1.44      0.69     0.09     2.76 1.00     6241     6011
+
+#Further Distributional Parameters:
+#      Estimate Est.Error l-95% CI u-95% CI Rhat Bulk_ESS Tail_ESS
+#sigma     1.03      0.02     1.00     1.06 1.00     8075     6230
 
 loo(mld_Long, mld_Longar, mld_Longma, mld_Longarma, compare = TRUE)
 # Results:
@@ -446,7 +487,7 @@ mld_Longarma <- readRDS("Models/mld_Longarma.rds")
 
 # Panel A: Trace plots
 s1a <- mcmc_trace(mld_Longarma,
-                  pars = c("b_Intercept", "b_Seki_Int", "b_Palmer_Int",
+                  pars = c("b_Intercept", "b_Seki_Int", "b_Stott_Int",
                            "b_Davis5", "sigma", "ar[1]", "ma[1]"),
                   facet_args = list(ncol = 1)) +
   labs(title = "A. Trace plots") +
@@ -528,12 +569,12 @@ mld_arma_only <- brm(elev ~ 1 + arma(p = 1, q = 1, time = Year_B2005),
                      control = list(adapt_delta = 0.95))
 
 loo(mld_Longarma, mld_arma_only, compare = TRUE)
-# Results: elpd_diff = -0.1 (SE 2.5) -- essentially identical for year-to-year prediction. This is expected in loo since ARMA dominates year over year correlation; loo (leave one out) observes prediction when one observation is left out at a time. SSTs are essential for century+ scale climate forcing, because arma alone does not inform the mean when making predictions on new data.
+#essentially identical for year-to-year prediction. This is expected in loo since ARMA dominates year over year correlation; loo (leave one out) observes prediction when one observation is left out at a time. SSTs are essential for century+ scale climate forcing, because arma alone does not inform the mean when making predictions on new data.
 
 ##let's check for non-linear and more complex relationships
 
 #spline instead of linear
-mld_Longarmas <- brm(elev ~ s(Seki_Int) + s(Palmer_Int) + s(Davis5) + arma(p = 1, q = 1, time = Year_B2005),
+mld_Longarmas <- brm(elev ~ s(Seki_Int) + s(Stott_Int) + s(Davis5) + arma(p = 1, q = 1, time = Year_B2005),
                  data = clim,
                  family = gaussian(),
                  prior = paashi_priors_arma,
@@ -548,9 +589,32 @@ summary(mld_Longarmas)
 #pp_check(mld_Longarmas, ndraws = 100)
 saveRDS(mld_Longarmas, file = "Models/mld_Longarmas.rds")
 
+#Smoothing Spline Hyperparameters:
+#                  Estimate Est.Error l-95% CI u-95% CI Rhat Bulk_ESS Tail_ESS
+#sds(sSeki_Int_1)      1.91      1.70     0.07     6.29 1.00     2438     4344
+#sds(sStott_Int_1)     1.11      0.97     0.04     3.56 1.00     3849     3382
+#sds(sDavis5_1)        1.28      1.10     0.04     4.08 1.00     3443     3296
+
+#Correlation Structures:
+#      Estimate Est.Error l-95% CI u-95% CI Rhat Bulk_ESS Tail_ESS
+#ar[1]     0.83      0.02     0.80     0.87 1.00     5890     5682
+#ma[1]    -0.10      0.03    -0.16    -0.04 1.00     7432     6483
+
+#Regression Coefficients:
+#             Estimate Est.Error l-95% CI u-95% CI Rhat Bulk_ESS Tail_ESS
+#Intercept       62.21      0.13    61.96    62.46 1.00    10987     6143
+#sSeki_Int_1      1.60      2.99    -3.99     8.47 1.00     4890     5401
+#sStott_Int_1    -0.54      2.62    -6.67     4.09 1.00     5212     4734
+#sDavis5_1        0.03      2.77    -6.40     4.70 1.00     4482     5607
+
+#Further Distributional Parameters:
+#      Estimate Est.Error l-95% CI u-95% CI Rhat Bulk_ESS Tail_ESS
+#sigma     1.03      0.02     1.00     1.06 1.00    12164     5631
+
+
 #linear interactions between variables
 # Using * for full interaction hierarchy (main effects + 2-way + 3-way)
-mld_Longarmar <- brm(elev ~ Seki_Int * Palmer_Int * Davis5 + arma(p = 1, q = 1, time = Year_B2005),
+mld_Longarmar <- brm(elev ~ Seki_Int * Stott_Int * Davis5 + arma(p = 1, q = 1, time = Year_B2005),
                  data = clim,
                  family = gaussian(),
                  prior = paashi_priors_arma,
@@ -565,23 +629,45 @@ summary(mld_Longarmar)
 #pp_check(mld_Longarmar, ndraws = 100)
 saveRDS(mld_Longarmar, file = "Models/mld_Longarmar.rds")
 
-#gaussian processing
-##note, gaussian processing allows you to model multiple factors as a "surface"; so, you could do gp(lat, long), or gp(lat, long, elev) for a 3 dimensional space. this takes an immensely long time to process, so we will not run it here.
+
+#Correlation Structures:
+#      Estimate Est.Error l-95% CI u-95% CI Rhat Bulk_ESS Tail_ESS
+#ar[1]     0.84      0.02     0.80     0.87 1.00     4809     5414
+#ma[1]    -0.11      0.03    -0.17    -0.04 1.00     5252     5783
+
+#Regression Coefficients:
+#                          Estimate Est.Error l-95% CI u-95% CI Rhat Bulk_ESS Tail_ESS
+#Intercept                   172.36    263.44  -335.07   690.32 1.00     2540     3831
+#Seki_Int                      0.38      4.89    -9.04     9.73 1.00     7582     5865
+#Stott_Int                    -0.46      4.82   -10.06     8.81 1.00     6407     5386
+#Davis5                       -0.23      4.93    -9.81     9.37 1.00     7622     5403
+#Seki_Int:Stott_Int           -0.26      0.63    -1.51     0.96 1.00     2239     3436
+#Seki_Int:Davis5              -0.97      2.20    -5.31     3.32 1.00     2440     3500
+#Stott_Int:Davis5             -0.45      1.23    -2.88     1.92 1.00     2284     3657
+#Seki_Int:Stott_Int:Davis5     0.07      0.15    -0.22     0.36 1.00     2215     3221
+
+#Further Distributional Parameters:
+#      Estimate Est.Error l-95% CI u-95% CI Rhat Bulk_ESS Tail_ESS
+#sigma     1.03      0.02     1.00     1.06 1.00     8659     6584
+
+
 
 loo(mld_Longarma, mld_Longarmas, mld_Longarmar, compare = TRUE)
-# Results:
-#                  elpd_diff se_diff
-# mld_Longarmas     0.0       0.0   
-# mld_Longarmar    -0.8       1.8
-# mld_Longarma     -4.1       3.3
-# Differences within 2 SE; keep simpler mld_Longarma for ease of processing and interpreting
+
+#Model comparisons:
+#              elpd_diff se_diff
+#mld_Longarma   0.0       0.0   
+#mld_Longarmas -0.5       1.0   
+#mld_Longarmar -0.9       0.5 
+
+# Differences small; keep simpler mld_Longarma for ease of processing and interpreting
 
 ##let's see if variance and flood frequency are influenced by SST
 #best linear model plus variance tested
 #note the bf() part, this is used if there are multiple parts in the model
-mld_Longarma_sig <- brm(bf(elev ~ Seki_Int + Palmer_Int + Davis5 + arma(p = 1, q = 1, time = Year_B2005),
+mld_Longarma_sig <- brm(bf(elev ~ Seki_Int + Stott_Int + Davis5 + arma(p = 1, q = 1, time = Year_B2005),
     # variance (sigma) model: does variability depend on SST?
-    sigma ~ Seki_Int + Palmer_Int + Davis5),
+    sigma ~ Seki_Int + Stott_Int + Davis5),
   data   = clim,
   family = gaussian(),
   prior = c(
@@ -600,11 +686,29 @@ readRDS("Models/mld_Longarma_sig.rds") -> mld_Longarma_sig
 summary(mld_Longarma_sig)
 # remember that sigma summaries default to log.
 
+#Correlation Structures:
+#      Estimate Est.Error l-95% CI u-95% CI Rhat Bulk_ESS Tail_ESS
+#ar[1]     0.84      0.02     0.80     0.87 1.00     7799     6560
+#ma[1]    -0.10      0.03    -0.16    -0.04 1.00     8537     7456
+
+#Regression Coefficients:
+#                Estimate Est.Error l-95% CI u-95% CI Rhat Bulk_ESS Tail_ESS
+#Intercept          41.42     17.02     8.66    75.47 1.00     6463     6184
+#sigma_Intercept     3.06      2.17    -1.18     7.26 1.00     7486     7023
+#Seki_Int            0.34      0.47    -0.59     1.26 1.00     7111     5809
+#Stott_Int           0.14      0.39    -0.63     0.89 1.00     8846     7034
+#Davis5              1.46      0.69     0.07     2.80 1.00     6232     6236
+#sigma_Seki_Int     -0.08      0.06    -0.20     0.02 1.00     9778     7584
+#sigma_Stott_Int    -0.01      0.05    -0.10     0.09 1.00     9337     7360
+#sigma_Davis5       -0.20      0.09    -0.37    -0.03 1.00     7197     6424
+
+##SSTs do not meaningfully influence year-to-year variance when ARMA is present (sigma_Stott_Int ≈ 0, sigma_Seki_Int ≈ 0), Davis5 shows a small credible negative effect on variance (sigma_Davis5 = -0.20 [-0.37, -0.03]).
+
 # Skew-normal model: check if lake elevation distribution is asymmetric.
 # Note: skew-normal + ARMA was too heavy
-mld_Long_skew <- brm(bf(elev ~ Seki_Int + Palmer_Int + Davis5,
+mld_Long_skew <- brm(bf(elev ~ Seki_Int + Stott_Int + Davis5,
     # right tail (alpha) model: do high elevations depend on SST?
-    alpha ~ Seki_Int + Palmer_Int + Davis5),
+    alpha ~ Seki_Int + Stott_Int + Davis5),
   data   = clim,
   family = skew_normal(),
   chains = 4,
@@ -616,7 +720,23 @@ saveRDS(mld_Long_skew, file = "Models/mld_Long_skew.rds")
 readRDS("Models/mld_Long_skew.rds") -> mld_Long_skew
 summary(mld_Long_skew)
 
-##neither of these provide very strong results. Likely because ar/ma soaks up most of the year over year fluctuations; without year over year SSTs we don't see SST influence on skew and variability.
+#Regression Coefficients:
+#                Estimate Est.Error l-95% CI u-95% CI Rhat Bulk_ESS Tail_ESS
+#Intercept          34.57      5.28    24.21    44.71 1.00     5943     5281
+#alpha_Intercept   127.45     37.36    57.39   202.62 1.00     5871     5277
+#Seki_Int            0.41      0.14     0.13     0.68 1.00     7921     6452
+#Stott_Int           0.33      0.12     0.09     0.57 1.00     7734     6439
+#Davis5              1.49      0.21     1.07     1.92 1.00     7187     6257
+#alpha_Seki_Int     -0.81      0.92    -2.57     0.99 1.00     7645     6776
+#alpha_Stott_Int    -2.43      0.90    -4.20    -0.69 1.00     6743     5938
+#alpha_Davis5       -5.92      1.64    -9.39    -2.89 1.00     6606     5572
+
+#Further Distributional Parameters:
+#      Estimate Est.Error l-95% CI u-95% CI Rhat Bulk_ESS Tail_ESS
+#sigma     1.71      0.03     1.65     1.77 1.00     8009     5907
+
+
+## SSTs contribute credibly to the mean; Stott_Int and Davis5 have credible effects on SKEWNESS (alpha). So, the western tropical Pacific (Stott/ENSO region) shape the DISTRIBUTION of lake states more than the mean. This is consistent with what we'd expect from ENSO teleconnection; higher tropical temps associated with slightly higher means and more consistent/predictable lake levels.
 
 ```
 
@@ -729,7 +849,7 @@ save_fig(fig_flood, "Figure_S_Flood_Return.tiff", height_mm = 90)
 ## Our century-scale SSTs force long-term mean lake levels. ARMA(1,1) accounts for year-to-year persistence because the basin buffers swings in rainfall. But there are still year-over-year fluctuations and ~35-40 year periodicity that our models do not explain.
 
 # Based on contemporary climate science, PDO (Pacific Decadal Oscillation) and ENSO (El Nino-Southern Oscillation) likely drive those fluctuations. They are the annually resolved versions of the same Pacific climate signals our century-scale proxies show:
-# Palmer_Int (~600yr resolution) = long-term mean of western equatorial Pacific, where ENSO operates; ~7 year cycles
+# Stott_Int (~50-100yr resolution) = long-term mean of western equatorial Pacific, where ENSO operates; ~7 year cycles
 # Seki_Int (~400yr resolution) = long-term mean of NE Pacific / California margin, where PDO operates; ~20-30 year cycles
 
 # To quantify what our hindcast CIs represent, we fit three models on the ~1,000-year window where annually-resolved PDO and ENSO reconstructions overlap with our training data, then compare blind predictions (elev = NA, same as hindcast).
@@ -737,7 +857,7 @@ save_fig(fig_flood, "Figure_S_Flood_Return.tiff", height_mm = 90)
 
 # Filter to rows where all predictors + PDO + ENSO are available (~1,000 years)
 clim %>%
-  filter(!is.na(elev), !is.na(Seki_Int), !is.na(Palmer_Int),
+  filter(!is.na(elev), !is.na(Seki_Int), !is.na(Stott_Int),
          !is.na(Davis5), !is.na(PDO), !is.na(ENSO)) %>%
   arrange(Year_B2005) -> clim_test
 
@@ -745,7 +865,7 @@ clim %>%
 if (file.exists("Models/mld_test_longarma.rds")) {
   mld_test_longarma <- readRDS("Models/mld_test_longarma.rds")
 } else {
-  mld_test_longarma <- brm(elev ~ Seki_Int + Palmer_Int + Davis5 + arma(p = 1, q = 1, time = Year_B2005),
+  mld_test_longarma <- brm(elev ~ Seki_Int + Stott_Int + Davis5 + arma(p = 1, q = 1, time = Year_B2005),
       data = clim_test, family = gaussian(),
       prior = paashi_priors_arma,
       chains = 4, iter = 4000, warmup = 2000,
@@ -771,7 +891,7 @@ if (file.exists("Models/mld_test_pdo_enso_only.rds")) {
 if (file.exists("Models/mld_test_pdo_enso.rds")) {
   mld_test_pdo_enso <- readRDS("Models/mld_test_pdo_enso.rds")
 } else {
-  mld_test_pdo_enso <- brm(elev ~ Seki_Int + Palmer_Int + Davis5 + PDO + ENSO + arma(p = 1, q = 1, time = Year_B2005),
+  mld_test_pdo_enso <- brm(elev ~ Seki_Int + Stott_Int + Davis5 + PDO + ENSO + arma(p = 1, q = 1, time = Year_B2005),
       data = clim_test, family = gaussian(),
       prior = paashi_priors_arma,
       chains = 4, iter = 4000, warmup = 2000,
@@ -1039,8 +1159,8 @@ ggplot(Longarma_Predict, aes(x = year_bp)) +
 
 #Build clean "new data" for prediction
 newdata_pred <- clim %>%
-  select(Year_B2005, Seki_Int, Palmer_Int, Davis5, elev) %>%
-  filter(!is.na(Year_B2005), !is.na(Seki_Int), !is.na(Palmer_Int), !is.na(Davis5)) %>%
+  select(Year_B2005, Seki_Int, Stott_Int, Davis5, elev) %>%
+  filter(!is.na(Year_B2005), !is.na(Seki_Int), !is.na(Stott_Int), !is.na(Davis5)) %>%
   arrange(Year_B2005)
 
 # fitted() gives the expected mean trend with uncertainty about where the average is.
@@ -1062,6 +1182,22 @@ hindcast$elev_obs <- newdata_pred$elev
 
 write.csv(hindcast, "Processed Data/Hindcast_Full.csv", row.names = FALSE)
 hindcast <- read.csv("Processed Data/Hindcast_Full.csv")
+
+# Rebuild Model_Outputs_Combined.csv from updated hindcast + archaeological data
+arch_raw <- read.csv("Processed Data/Lake12All.csv")
+combo_rebuilt <- hindcast %>%
+  rename(year_b2005 = year_bp,
+         Fitted_Estimate = Fit_Est, Fitted_Est.Error = Fit_SE,
+         Fitted_Q2.5 = Fit_Q2.5, Fitted_Q97.5 = Fit_Q97.5,
+         Predict_Estimate = Pred_Est, Predict_Est.Error = Pred_SE,
+         Predict_Q2.5 = Pred_Q2.5, Predict_Q97.5 = Pred_Q97.5) %>%
+  mutate(calendar_year = 2005 - year_b2005) %>%
+  select(year_b2005, calendar_year, Fitted_Estimate, Fitted_Est.Error,
+         Fitted_Q2.5, Fitted_Q97.5, Predict_Estimate, Predict_Est.Error,
+         Predict_Q2.5, Predict_Q97.5, elev_obs) %>%
+  left_join(arch_raw %>% select(ybp, elev) %>% rename(year_b2005 = ybp, arch_model = elev),
+            by = "year_b2005")
+write.csv(combo_rebuilt, "Processed Data/Model_Outputs_Combined.csv", row.names = FALSE)
 
 # two-ribbon plot: outer = prediction interval, inner = credible interval for mean
 ggplot(hindcast, aes(x = year_bp)) +
@@ -1175,6 +1311,7 @@ save_fig(fig4, "Figure_4_Hindcast.tiff", width_mm = 190, height_mm = 160)
 
 ### Archaeological Reconstruction Comparison (Assisted by Claude Code)
 ```{r fig5_arch_comparison, fig.width = 7.5, fig.height = 3.5}
+hindcast <- read.csv("Processed Data/Hindcast_Full.csv")
 combo <- read.csv("Processed Data/Model_Outputs_Combined.csv")
 arch  <- read.csv("Processed Data/Lake12All.csv")
 # hindcast has full prediction intervals; combo only has them for the training period
