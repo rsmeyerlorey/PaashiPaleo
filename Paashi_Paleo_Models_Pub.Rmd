@@ -25,6 +25,7 @@ library(patchwork)
 library(scales)
 library(ggrepel)
 library(maps)
+library(ggnewscale)   # two separate shape legends in fig5a
 
 clim <- read.csv("Raw Data/ElevSSTs.csv")
 
@@ -55,12 +56,15 @@ col_seki         <- "#D4930D"   # amber — Seki SST (California Margin)
 col_stott        <- "#1B998B"   # teal — Stott SST (W. Equatorial Pacific)
 col_davis5       <- "#5B7B9A"   # slate blue — Davis5 SST (Sea of Okhotsk)
 col_train_bg     <- "#FFF8F0"   # faint warm — training window background
-col_pleis_line   <- "gray50"    # Pleistocene-Holocene boundary
+col_pleis_line   <- "gray25"    # Pleistocene-Holocene boundary
 col_pdo_line     <- "#B85C38"
 col_wb_draw      <- "#4682B4"
 
-# Shared theme for JAS (Elsevier) publication — min 7pt text, sans-serif
-theme_paashi <- function(base_size = 8) {
+# Shared theme for JAS Reports (Elsevier) — base set to match ~10pt body
+# type. With the existing rel() multipliers, axis text lands at 9pt and
+# annotations (size = 3.0) at ~8.5pt, preserving the title > body > axis >
+# annotation hierarchy.
+theme_paashi <- function(base_size = 10) {
   theme_minimal(base_size = base_size, base_family = "sans") %+replace%
     theme(
       plot.title       = element_text(size = rel(1.15), face = "bold",
@@ -115,7 +119,7 @@ fig_elev_hist <- ggplot(clim, aes(x = elev)) +
        title = "Distribution of Observed Lake Elevation (Training Period)") +
   theme_paashi()
 fig_elev_hist
-save_fig(fig_elev_hist, "Figure_S_Elevation_Histogram.tiff", height_mm = 90)
+save_fig(fig_elev_hist, "Figure_S1_Elevation_Histogram.tiff", height_mm = 90)
 #This gives a normal distribution, so no further action needed; we can use family = gaussian. The distribution may in fact be bimodal with two very close peaks near the center-- this may represent "drought" and "flood" periods, as truly average rainfall is rarity in California according to oral traditions. However, these peaks are close enough to treat as a single normal distribution; bimodal modeling produces bad results
 
 ```
@@ -171,7 +175,7 @@ fig_prior_pp <- pp_check(mld_prior_only, ndraws = 100) +
   xlim(30, 100) +
   theme_paashi()
 fig_prior_pp
-save_fig(fig_prior_pp, "Figure_S_Prior_Predictive.tiff", height_mm = 90)
+save_fig(fig_prior_pp, "Figure_S2_Prior_Predictive.tiff", height_mm = 90)
 ## looks good!
 
 ```
@@ -363,8 +367,8 @@ fig1b <- ggplot() +
              aes(x = Year_B2005, y = sst_raw, color = source),
              size = 0.4, alpha = 0.5) +
   scale_color_manual(values = sst_colors) +
-  scale_x_continuous(labels = comma_format(),
-                     breaks = seq(0, 28000, by = 4000)) +
+  scale_x_reverse(labels = comma_format(),
+                  breaks = seq(0, 28000, by = 4000)) +
   labs(x = "Years Before Present (cal yr BP)",
        y = "Sea Surface Temperature (\u00B0C)",
        title = "B. Pacific SST records used as predictors",
@@ -544,12 +548,12 @@ s1d <- ggplot(k_df, aes(x = obs, y = k)) +
        subtitle = paste0("All ", nrow(k_df), " observations below 0.5")) +
   theme_paashi(base_size = 7)
 
-figS1 <- (s1a | (s1b / s1c / s1d)) +
+figS4 <- (s1a | (s1b / s1c / s1d)) +
   plot_layout(widths = c(1, 1)) +
   plot_annotation(
-    title = "Supplementary Figure S1: Model Diagnostics (mld_Longarma)")
-figS1
-save_fig(figS1, "Figure_S1_Diagnostics.tiff", width_mm = 190, height_mm = 220)
+    title = "Supplementary Figure S4: Model Diagnostics (mld_Longarma)")
+figS4
+save_fig(figS4, "Figure_S4_Diagnostics.tiff", width_mm = 190, height_mm = 220)
 ```
 
 ## Continue Model Testing
@@ -764,12 +768,13 @@ fig_blind_train <- ggplot(blind_preds, aes(x = year_bp)) +
   geom_smooth(aes(y = elev_obs), method = "loess", span = 500 / nrow(blind_preds),
               color = col_observed, linewidth = 0.9, se = FALSE) +
   geom_line(aes(y = Estimate), color = col_model_line, linewidth = 0.8) +
+  scale_x_reverse(labels = comma_format()) +
   labs(x = "Years Before 2005", y = "Lake Elevation (MaSL)",
        title = "Full Model: Blind Prediction of Training Period (elev = NA)",
        subtitle = "SST-driven mean only; ARMA initialized at zero (same as hindcast)") +
   theme_paashi()
 fig_blind_train
-save_fig(fig_blind_train, "Figure_S_Blind_Training.tiff")
+save_fig(fig_blind_train, "Figure_2_Blind_Training.tiff")
 
 ```
 
@@ -793,7 +798,7 @@ fig_drainage <- ggplot(obs_elev, aes(x = Calendar_Year)) +
        title = "Observed Tulare Lake Elevation — Drainage Periods Highlighted") +
   theme_paashi()
 fig_drainage
-save_fig(fig_drainage, "Figure_S_Elevation_Drainage.tiff", width_mm = 190, height_mm = 80)
+save_fig(fig_drainage, "Figure_5_Drainage.tiff", width_mm = 190, height_mm = 80)
 
 # Smoothed periodogram of observed elevations
 y <- clim$elev
@@ -839,7 +844,7 @@ fig_flood <- ggplot(flood_gap_df, aes(x = gap)) +
        title = paste0("Flood Return Intervals (elev > ", flood_threshold, " m asl)")) +
   theme_paashi()
 fig_flood
-save_fig(fig_flood, "Figure_S_Flood_Return.tiff", height_mm = 90)
+save_fig(fig_flood, "Figure_S5_Flood_Return.tiff", height_mm = 90)
 # Result: 51 flood events over ~2,000 years. Mean return = 39.4 years, median = 32 years. Mode around 20-30 years. Right-skewed: most floods are generational (~25-40 years apart) but some gaps stretch to 80-120 years. Consistent with oral traditions of "once a generation" flooding. The right skew may reflect prolonged drought periods.
 
 ```
@@ -925,6 +930,7 @@ p_blind_sst <- ggplot(blind_sst, aes(x = year_bp)) +
   geom_ribbon(aes(ymin = Q2.5, ymax = Q97.5), fill = col_model_ribbon, alpha = 0.4) +
   geom_line(aes(y = elev_obs), color = col_observed, linewidth = 0.3, alpha = 0.4) +
   geom_line(aes(y = Estimate), color = col_model_line, linewidth = 0.5) +
+  scale_x_reverse(labels = comma_format()) +
   labs(x = "Years Before 2005", y = "Lake Elevation (MaSL)",
        title = "Blind Prediction: SSTs + ARMA(1,1)") +
   theme_paashi()
@@ -933,12 +939,13 @@ p_blind_pdo <- ggplot(blind_pdo, aes(x = year_bp)) +
   geom_ribbon(aes(ymin = Q2.5, ymax = Q97.5), fill = col_model_ribbon, alpha = 0.4) +
   geom_line(aes(y = elev_obs), color = col_observed, linewidth = 0.3, alpha = 0.4) +
   geom_line(aes(y = Estimate), color = col_pdo_line, linewidth = 0.5) +
+  scale_x_reverse(labels = comma_format()) +
   labs(x = "Years Before 2005", y = "Lake Elevation (MaSL)",
        title = "Blind Prediction: PDO + ENSO Only (No SSTs)") +
   theme_paashi()
 
 p_blind_sst / p_blind_pdo
-save_fig(p_blind_sst / p_blind_pdo, "Figure_S_Blind_SST_vs_PDO.tiff", height_mm = 140)
+save_fig(p_blind_sst / p_blind_pdo, "Figure_S6_Blind_SST_vs_PDO.tiff", height_mm = 140)
 
 # SST+ARMA follows multi-century mean; PDO+ENSO tracks decadal swings in the predicted mean. The structure visible in the PDO+ENSO panel is what our SST-based hindcast CIs represent.
 
@@ -978,7 +985,7 @@ fig_periodo_pdo <- ggplot(df_sp_pdo, aes(x = period, y = spectrum)) +
 
 fig_periodograms <- fig_periodo_sst / fig_periodo_pdo
 fig_periodograms
-save_fig(fig_periodograms, "Figure_S_Residual_Periodograms.tiff", height_mm = 140)
+save_fig(fig_periodograms, "Figure_S7_Residual_Periodograms.tiff", height_mm = 140)
 
 ```
 
@@ -1092,18 +1099,26 @@ sim_long_wb <- as.data.frame(elev_sim_wb) %>%
   mutate(year_idx = as.integer(gsub("V", "", year_idx)),
          Calendar_Year = years_wb[year_idx])
 
-ggplot() +
+fig6_wb_sims <- ggplot() +
   geom_line(data = sim_long_wb,
-            aes(x = Calendar_Year, y = elev_sim, group = draw),
-            color = col_wb_draw, alpha = 0.01, linewidth = 0.3) +
+            aes(x = Calendar_Year, y = elev_sim, group = draw,
+                color = "Simulated draws"),
+            alpha = 0.01, linewidth = 0.3) +
   geom_line(data = obs_wb,
-            aes(x = Calendar_Year, y = elev),
-            color = col_observed, linewidth = 0.4) +
-  labs(x = "Calendar Year", y = "Water Surface Elevation (m asl)",
+            aes(x = Calendar_Year, y = elev, color = "Observed"),
+            linewidth = 0.4) +
+  scale_color_manual(name = NULL,
+    values = c("Simulated draws" = col_wb_draw,
+               "Observed"        = col_observed)) +
+  guides(color = guide_legend(override.aes = list(
+    alpha = 1, linewidth = c(0.5, 0.5)))) +
+  labs(x = "Calendar Year AD", y = "Water Surface Elevation (m asl)",
        title = "Water Balance Simulations vs Observed",
        subtitle = paste0(n_draws_wb,
                          " posterior draws: (Q_in, Precip) ~ PDO + ENSO -> Adams physics -> elevation")) +
   theme_paashi()
+fig6_wb_sims
+save_fig(fig6_wb_sims, "Figure_6_WB_Simulations.tiff", width_mm = 190, height_mm = 100)
 
 #Look at periodograms (Assisted by Claude Code)
 obs_wb_ts <- ts(obs_wb$elev, frequency = 1)
@@ -1147,13 +1162,19 @@ write.csv(Longarma_Predict, "Processed Data/Longarma_Predict.csv", row.names = F
 read.csv("Processed Data/Longarma_Predict.csv") -> Longarma_Predict
 
 ##Let's visualize the results quickly. We will do more in depth plotting later
-#plot light blue ribbon of lower and upper 95, dark blue line is mean, and gray "highlight" is actual values
-ggplot(Longarma_Predict, aes(x = year_bp)) +
-  geom_ribbon(aes(ymin = Q2.5, ymax = Q97.5), fill = "skyblue", alpha = 0.5) +
-  geom_line(aes(y = Estimate), color = "blue", linewidth = 1) +
-  geom_line(aes(y = elev_obs), color = "black", linewidth = 1.5, alpha = 0.4) +
-  labs(x = "Years Before Present", y = "Lake Elevation (MaSL)",title = "Observed vs. Modeled Lake Elevation") +
-  theme_minimal()
+#ribbon = 95% prediction interval, dark line = posterior mean, gray = observed
+figS3_in_sample <- ggplot(Longarma_Predict, aes(x = year_bp)) +
+  geom_ribbon(aes(ymin = Q2.5, ymax = Q97.5),
+              fill = col_model_ribbon, alpha = 0.6) +
+  geom_line(aes(y = elev_obs), color = col_observed, linewidth = 0.4) +
+  geom_line(aes(y = Estimate), color = col_model_line, linewidth = 0.4) +
+  scale_x_reverse(labels = comma_format()) +
+  labs(x = "Years Before 2005", y = "Lake Elevation (m asl)",
+       title = "In-Sample Fit: ARMA with Observed Lagged Elevations",
+       subtitle = "Posterior mean (blue) tracks observed (gray); 95% PI shaded") +
+  theme_paashi()
+figS3_in_sample
+save_fig(figS3_in_sample, "Figure_S3_InSample_ARMA.tiff", height_mm = 90)
 
 ##now let's run it back through time with "new data" from the rest of the climate dataset
 
@@ -1242,23 +1263,23 @@ fig4a <- ggplot(hindcast_holo, aes(x = year_bp)) +
   geom_vline(xintercept = training_boundary, linetype = "dashed",
              color = "gray40", linewidth = 0.3) +
   geom_vline(xintercept = pleis_holo, linetype = "dotted",
-             color = col_pleis_line, linewidth = 0.3) +
+             color = col_pleis_line, linewidth = 0.5) +
   annotate("text", x = training_boundary + 200, y = 69,
            label = "Training
-boundary", size = 2.2, hjust = 0, color = "gray40") +
+boundary", size = 3.0, hjust = 1, color = "gray40") +
   annotate("text", x = pleis_holo - 200, y = 69,
            label = "Pleistocene-
 Holocene
-boundary", size = 2.2,
-           hjust = 1, color = col_pleis_line) +
+boundary", size = 3.0,
+           hjust = 0, color = col_pleis_line) +
   scale_fill_manual(name = NULL,
     values = c("95% prediction interval" = col_model_ribbon,
                "95% CI (expected trend)" = col_model_inner)) +
   scale_color_manual(name = NULL,
     values = c("Model trend" = col_model_line,
                "Observed" = col_observed)) +
-  scale_x_continuous(labels = comma_format(),
-                     breaks = seq(0, 12000, by = 2000)) +
+  scale_x_reverse(labels = comma_format(),
+                  breaks = seq(0, 12000, by = 2000)) +
   coord_cartesian(ylim = c(50, 72)) +
   labs(x = NULL, y = "Lake Elevation (m asl)",
        title = "A. Holocene (0–12,000 yr BP)") +
@@ -1280,20 +1301,20 @@ fig4b <- ggplot(hindcast, aes(x = year_bp)) +
   geom_vline(xintercept = training_boundary, linetype = "dashed",
              color = "gray40", linewidth = 0.3) +
   geom_vline(xintercept = pleis_holo, linetype = "dotted",
-             color = col_pleis_line, linewidth = 0.3) +
+             color = col_pleis_line, linewidth = 0.5) +
   annotate("text", x = 18000, y = 70,
            label = "Model trained on Holocene data;
 deeper predictions carry
 greater uncertainty",
-           size = 2.0, color = "gray40", fontface = "italic") +
+           size = 3.0, color = "gray40", fontface = "italic") +
   scale_fill_manual(name = NULL,
     values = c("95% prediction interval" = col_model_ribbon,
                "95% CI (expected trend)" = col_model_inner)) +
   scale_color_manual(name = NULL,
     values = c("Model trend" = col_model_line,
                "Observed" = col_observed)) +
-  scale_x_continuous(labels = comma_format(),
-                     breaks = seq(0, 22000, by = 4000)) +
+  scale_x_reverse(labels = comma_format(),
+                  breaks = seq(0, 22000, by = 4000)) +
   coord_cartesian(ylim = c(50, 72)) +
   labs(x = "Years Before Present (cal yr BP)",
        y = "Lake Elevation (m asl)",
@@ -1306,68 +1327,223 @@ fig4 <- fig4a / fig4b +
   plot_annotation(
     title = "Bayesian Hindcast of Tulare Lake Elevation")
 fig4
-save_fig(fig4, "Figure_4_Hindcast.tiff", width_mm = 190, height_mm = 160)
+save_fig(fig4, "Figure_3_Hindcast.tiff", width_mm = 190, height_mm = 160)
 ```
 
-### Archaeological Reconstruction Comparison (Assisted by Claude Code)
-```{r fig5_arch_comparison, fig.width = 7.5, fig.height = 3.5}
-hindcast <- read.csv("Processed Data/Hindcast_Full.csv")
-combo <- read.csv("Processed Data/Model_Outputs_Combined.csv")
-arch  <- read.csv("Processed Data/Lake12All.csv")
-# hindcast has full prediction intervals; combo only has them for the training period
-hindcast_holo <- hindcast %>% filter(year_bp <= 12000)
-hindcast_holo_model <- hindcast_holo %>% filter(year_bp > training_boundary)
-combo_holo <- combo %>% filter(year_b2005 <= 12000)
-combo_holo_model <- combo_holo %>% filter(year_b2005 > training_boundary)
-arch_holo  <- arch %>% filter(ybp <= 12000)
+### Negrini (2006) Archaeological Comparison (assisted by Claude Code)
 
-fig5 <- ggplot() +
+Two-panel figure: (A) recreation based on data from Negrini et al. (2006) Fig. 10
+from digitized observations, deep-water clay intervals, and trench horizons;
+(B) Negrini's dashed reconstruction overlaid on our Bayesian hindcast.
+
+```{r fig5_negrini_comparison, fig.width = 7.5, fig.height = 7.5}
+# --- Data ----------------------------------------------------------------
+hindcast  <- read.csv("Processed Data/Hindcast_Full.csv")
+combo     <- read.csv("Processed Data/Model_Outputs_Combined.csv")
+neg_horiz <- read.csv("Raw Data/Negrini_Horizons.csv",
+                      stringsAsFactors = FALSE)
+neg_clay  <- read.csv("Raw Data/Negrini_DeepClay.csv",
+                      stringsAsFactors = FALSE) %>%
+  left_join(
+    neg_horiz %>% rename(h_ybp_start  = ybp_start,
+                         h_ybp_end    = ybp_end,
+                         h_elev_start = elev_start,
+                         h_elev_end   = elev_end),
+    by = "trench"
+  ) %>%
+  mutate(slope      = (h_elev_end - h_elev_start) /
+                      (h_ybp_end - h_ybp_start),
+         elev_start = h_elev_start + slope * (ybp_start - h_ybp_start),
+         elev_end   = h_elev_start + slope * (ybp_end   - h_ybp_start)) %>%
+  select(trench, ybp_start, ybp_end, elev_start, elev_end)
+
+# Per-type metadata. Shapes/colors/labels are derived from this single tibble
+# rather than maintained as parallel vectors.
+obs_meta <- tribble(
+  ~type,           ~shape, ~depth,          ~label,
+  "pollen",        0,      "shallow water", "Littoral pollen",
+  "organic",       3,      "shallow water", "Organic-rich (marsh?) deposits",
+  "mudcracks",     6,      "shallow water", "Mudcracks",
+  "beach_sands",   4,      "shallow water", "Well-sorted beach? sands",
+  "pelagic_algae", 17,     "deeper water",  "Pelagic algae",
+  "laminations",   15,     "deeper water",  "Laminations in silts/clays"
+)
+depth_colors     <- c("deeper water" = "#1F4E79", "shallow water" = "#2E7D52")
+col_dc           <- "gray30"
+col_dc_label     <- "Deep-water clay interval"
+col_ref          <- "gray45"
+rambla_highstand <- 70.1
+
+shallow_meta <- obs_meta %>% filter(depth == "shallow water")
+deeper_meta  <- obs_meta %>% filter(depth == "deeper water")
+
+neg_obs <- read.csv("Raw Data/Negrini_Observations.csv",
+                    stringsAsFactors = FALSE) %>%
+  rename(year_b2005 = ybp) %>%
+  mutate(type = recode(obs,
+                       "silt clay"     = "laminations",
+                       "organic marsh" = "organic",
+                       "algae"         = "pelagic_algae",
+                       "beach sands"   = "beach_sands")) %>%
+  inner_join(obs_meta %>% select(type, depth), by = "type")
+
+shallow_pts <- neg_obs %>% filter(depth == "shallow water")
+deeper_pts  <- neg_obs %>% filter(depth == "deeper water")
+
+# Upward "lake rose at least this high" arrows. Clay-bar arrows are gray
+# (same shade as the bars); deeper-water observation arrows are blue.
+clay_arrows <- bind_rows(
+  neg_clay %>% transmute(x = ybp_start, y = elev_start),
+  neg_clay %>% transmute(x = ybp_end,   y = elev_end)
+)
+deep_arrows <- deeper_pts %>% transmute(x = year_b2005, y = elev)
+arrow_style <- arrow(length = unit(0.08, "cm"), type = "open")
+
+# Holocene subsets for panel B
+hindcast_holo       <- hindcast %>% filter(year_bp <= 12000)
+hindcast_holo_model <- hindcast_holo %>% filter(year_bp > training_boundary)
+combo_holo          <- combo %>% filter(year_b2005 <= 12000)
+combo_holo_model    <- combo_holo %>% filter(year_b2005 > training_boundary)
+
+# Negrini's reconstruction line (for panel A; panel B uses combo directly)
+arch_line <- combo %>%
+  filter(!is.na(arch_model), year_b2005 >= 0, year_b2005 <= 11500) %>%
+  select(year_b2005, elev = arch_model)
+
+# --- Panel A: Negrini Fig. 10 recreation ---------------------------------
+# Layer order matters for ggnewscale: shallow-water points use the first
+# shape scale; everything after `new_scale("shape")` uses the second.
+fig5a <- ggplot() +
+  geom_hline(yintercept = rambla_highstand, linetype = "dotted",
+             color = col_ref, linewidth = 0.4) +
+  annotate("text", x = 11400, y = rambla_highstand + 0.4,
+           label = "Top of Rambla highstand", hjust = 0,
+           size = 3.0, color = "gray30") +
+  geom_segment(data = neg_horiz,
+               aes(x = ybp_start, xend = ybp_end,
+                   y = elev_start, yend = elev_end),
+               linetype = "dashed", color = col_ref, linewidth = 0.45) +
+  annotate("text", x = 2800, y = 61.0, label = "shoreline trench",
+           size = 3.0, color = "gray30", fontface = "italic") +
+  annotate("text", x = 2800, y = 56.5, label = "lake plain trench",
+           size = 3.0, color = "gray30", fontface = "italic") +
+  annotate("text", x = 6000, y = 52.6,
+           label = "depocenter core (Davis 1999)",
+           size = 3.0, color = "gray30", fontface = "italic") +
+  # Background bars/arrows/line — drawn BEFORE points so points sit on top.
+  geom_segment(data = neg_clay,
+               aes(x = ybp_start, xend = ybp_end,
+                   y = elev_start, yend = elev_end),
+               color = col_dc, linewidth = 1.3) +
+  geom_segment(data = clay_arrows,
+               aes(x = x, xend = x, y = y, yend = y + 1.6),
+               arrow = arrow_style, color = col_dc, linewidth = 0.3) +
+  geom_segment(data = deep_arrows,
+               aes(x = x, xend = x, y = y, yend = y + 1.6),
+               arrow = arrow_style,
+               color = depth_colors[["deeper water"]], linewidth = 0.4) +
+  geom_line(data = arch_line,
+            aes(x = year_b2005, y = elev),
+            color = col_arch, linewidth = 0.7, linetype = "dashed") +
+  # --- Shallow-water shape scale ---
+  geom_point(data = shallow_pts,
+             aes(x = year_b2005, y = elev, shape = type),
+             color = depth_colors[["shallow water"]],
+             size = 2.4, stroke = 1.3) +
+  scale_shape_manual(name = "shallow water",
+                     values = setNames(shallow_meta$shape, shallow_meta$type),
+                     labels = setNames(shallow_meta$label, shallow_meta$type),
+                     breaks = shallow_meta$type,
+                     guide = guide_legend(order = 1, nrow = 1, byrow = TRUE)) +
+  new_scale("shape") +
+  # --- Deeper-water + deep-clay shape scale ---
+  geom_point(data = deeper_pts,
+             aes(x = year_b2005, y = elev, shape = type),
+             color = depth_colors[["deeper water"]],
+             size = 2.4, stroke = 0.9) +
+  # Phantom off-canvas point whose only job is to register the
+  # "Deep-water clay interval" entry in the shape scale. (geom_segment
+  # silently drops shape mappings, so we need a point geom.) key_glyph
+  # forces the legend to draw a horizontal line instead of a point.
+  geom_point(data = data.frame(year_b2005 = -100, elev = -100,
+                               type = col_dc_label),
+             aes(x = year_b2005, y = elev, shape = type),
+             color = col_dc, key_glyph = "path") +
+  scale_shape_manual(
+    name = "deeper water",
+    values = c(setNames(deeper_meta$shape, deeper_meta$type),
+               setNames(15, col_dc_label)),
+    labels = c(setNames(deeper_meta$label, deeper_meta$type),
+               setNames(col_dc_label, col_dc_label)),
+    breaks = c(deeper_meta$type, col_dc_label),
+    guide = guide_legend(
+      order = 2, nrow = 1, byrow = TRUE,
+      override.aes = list(
+        shape     = c(deeper_meta$shape, NA),
+        color     = c(rep(depth_colors[["deeper water"]], nrow(deeper_meta)),
+                      col_dc),
+        linetype  = c(rep(0, nrow(deeper_meta)), 1),
+        linewidth = c(rep(0, nrow(deeper_meta)), 1.3)
+      ))) +
+  scale_x_reverse(labels = comma_format(),
+                  breaks = seq(0, 12000, by = 2000),
+                  expand = expansion(mult = c(0.02, 0.01))) +
+  coord_cartesian(xlim = c(11800, 0), ylim = c(50, 72)) +
+  labs(x = NULL, y = "Lake Elevation (m asl)",
+       title = "A. Negrini et al. (2006) Fig. 10 recreation",
+       subtitle = paste0("Holocene lake-level history from digitized ",
+                         "observations and trench horizons.")) +
+  theme_paashi() +
+  theme(legend.position = "bottom",
+        legend.box = "vertical")
+
+# --- Panel B: simplified Bayesian vs Negrini comparison ------------------
+fig5b <- ggplot() +
   annotate("rect", xmin = 0, xmax = training_boundary,
            ymin = -Inf, ymax = Inf, fill = col_train_bg, alpha = 0.6) +
-  # Archaeological raw evidence
-  geom_point(data = arch_holo, aes(x = ybp, y = elev),
-             color = "gray75", size = 0.1, alpha = 0.3) +
-  # Full prediction interval from hindcast data (outside training only)
   geom_ribbon(data = hindcast_holo_model,
               aes(x = year_bp, ymin = Pred_Q2.5, ymax = Pred_Q97.5,
                   fill = "95% prediction interval"), alpha = 0.5) +
-  # Model trend (outside training only)
   geom_line(data = combo_holo_model,
             aes(x = year_b2005, y = Fitted_Estimate,
-                color = "Model trend"), linewidth = 0.4, alpha = 0.8) +
-  # Archaeological reconstruction
-  geom_line(data = combo_holo %>% filter(!is.na(arch_model)),
-            aes(x = year_b2005, y = arch_model,
-                color = "Archaeological reconstruction"), linewidth = 0.6, alpha = 0.85) +
-  # Observed lake elevation
+                color = "Bayesian model trend"),
+            linewidth = 0.4, alpha = 0.85) +
   geom_line(data = combo_holo %>% filter(!is.na(elev_obs)),
             aes(x = year_b2005, y = elev_obs,
-                color = "Observed"), linewidth = 0.25, alpha = 0.5) +
+                color = "Observed"),
+            linewidth = 0.25, alpha = 0.55) +
+  geom_line(data = combo_holo %>% filter(!is.na(arch_model)),
+            aes(x = year_b2005, y = arch_model,
+                color = "Negrini reconstruction"),
+            linewidth = 0.7, linetype = "dashed", alpha = 0.9) +
   geom_vline(xintercept = training_boundary, linetype = "dashed",
              color = "gray40", linewidth = 0.3) +
-  geom_vline(xintercept = pleis_holo, linetype = "dotted",
-             color = col_pleis_line, linewidth = 0.3) +
-  annotate("text", x = pleis_holo - 200, y = 71,
-           label = "Pleistocene-
-Holocene boundary",
-           size = 2.0, hjust = 1, color = col_pleis_line) +
   scale_fill_manual(name = NULL,
-    values = c("95% prediction interval" = col_model_ribbon)) +
+    values = c("95% prediction interval" = col_model_ribbon),
+    guide = guide_legend(order = 1)) +
   scale_color_manual(name = NULL,
-    values = c("Model trend" = col_model_line,
-               "Archaeological reconstruction" = col_arch,
-               "Observed" = col_observed)) +
-  scale_x_continuous(labels = comma_format(),
-                     breaks = seq(0, 12000, by = 2000)) +
-  coord_cartesian(ylim = c(48, 73)) +
+    values = c("Bayesian model trend"   = col_model_line,
+               "Negrini reconstruction" = col_arch,
+               "Observed"               = col_observed),
+    guide = guide_legend(order = 2,
+                         override.aes = list(
+                           linetype  = c("solid", "dashed", "solid"),
+                           linewidth = c(0.5,     0.7,      0.4)))) +
+  scale_x_reverse(labels = comma_format(),
+                  breaks = seq(0, 12000, by = 2000),
+                  expand = expansion(mult = c(0.02, 0.01))) +
+  coord_cartesian(xlim = c(11800, 0), ylim = c(48, 73)) +
   labs(x = "Years Before Present (cal yr BP)",
        y = "Lake Elevation (m asl)",
-       title = "Model Reconstruction vs. Archaeological Evidence") +
-  guides(fill = guide_legend(order = 1), color = guide_legend(order = 2)) +
+       title = "B. Bayesian hindcast vs Negrini reconstruction") +
   theme_paashi() +
   theme(legend.position = "bottom")
+
+fig5 <- fig5a / fig5b +
+  plot_annotation(title = "Comparison with Negrini et al. (2006) Reconstruction")
 fig5
-save_fig(fig5, "Figure_5_Arch_Comparison.tiff", width_mm = 190, height_mm = 100)
+save_fig(fig5, "Figure_4_Negrini_Comparison.tiff",
+         width_mm = 190, height_mm = 200)
 ```
 
 ## Session Info
