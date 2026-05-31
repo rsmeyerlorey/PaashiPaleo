@@ -115,8 +115,11 @@ par(mfrow = c(1, 1))
 ##Examine training data
 fig_elev_hist <- ggplot(clim, aes(x = elev)) +
   geom_histogram(bins = 300, fill = col_model_ribbon, color = "white", linewidth = 0.1) +
-  labs(x = "Lake Elevation (m asl)", y = "Count",
-       title = "Distribution of Observed Lake Elevation (Training Period)") +
+  labs(x = "Lake Elevation (masl)", y = "Count",
+       title = "Distribution of Observed Lake Elevation (Training Period)",
+       subtitle = paste0("Mean = ", round(mean(clim$elev, na.rm = TRUE), 1),
+                         " masl; SD = ", round(sd(clim$elev, na.rm = TRUE), 2),
+                         " m")) +
   theme_paashi()
 fig_elev_hist
 save_fig(fig_elev_hist, "Figure_S1_Elevation_Histogram.tiff", height_mm = 90)
@@ -169,10 +172,11 @@ mld_prior_only <- brm(
   seed = 2025)
 
 # Simulated data should include the observed range but not be too close, as these priors are weakly informative
-fig_prior_pp <- pp_check(mld_prior_only, ndraws = 100) +
+fig_prior_pp <- pp_check(mld_prior_only, ndraws = 100, adjust = 2) +
   labs(title = "Prior Predictive Check",
-       subtitle = "Dark = observed; light = simulated from prior only") +
-  xlim(30, 100) +
+       subtitle = "Dark = observed; light = simulated from prior only",
+       x = "Lake Elevation (masl)", y = "Density") +
+  coord_cartesian(xlim = c(47, 77)) +
   theme_paashi()
 fig_prior_pp
 save_fig(fig_prior_pp, "Figure_S2_Prior_Predictive.tiff", height_mm = 90)
@@ -494,12 +498,13 @@ s1a <- mcmc_trace(mld_Longarma,
                   pars = c("b_Intercept", "b_Seki_Int", "b_Stott_Int",
                            "b_Davis5", "sigma", "ar[1]", "ma[1]"),
                   facet_args = list(ncol = 1)) +
-  labs(title = "A. Trace plots") +
+  labs(title = "A. Trace plots", x = "Iteration", y = "Parameter value") +
   theme_paashi(base_size = 7)
 
 # Panel B: Posterior predictive density overlay
 s1b <- pp_check(mld_Longarma, ndraws = 100, type = "dens_overlay") +
-  labs(title = "B. Posterior predictive check") +
+  labs(title = "B. Posterior predictive check",
+       x = "Lake Elevation (masl)", y = "Density") +
   theme_paashi(base_size = 7)
 
 # Panel C: ACF posterior predictive check
@@ -769,8 +774,8 @@ fig_blind_train <- ggplot(blind_preds, aes(x = year_bp)) +
               color = col_observed, linewidth = 0.9, se = FALSE) +
   geom_line(aes(y = Estimate), color = col_model_line, linewidth = 0.8) +
   scale_x_reverse(labels = comma_format()) +
-  labs(x = "Years Before 2005", y = "Lake Elevation (MaSL)",
-       title = "Full Model: Blind Prediction of Training Period (elev = NA)",
+  labs(x = "Years Before 2005", y = "Lake Elevation (masl)",
+       title = "Full Model: Blind Prediction of Training Period",
        subtitle = "SST-driven mean only; ARMA initialized at zero (same as hindcast)") +
   theme_paashi()
 fig_blind_train
@@ -794,7 +799,7 @@ fig_drainage <- ggplot(obs_elev, aes(x = Calendar_Year)) +
             color = col_observed, linewidth = 0.4) +
   #geom_hline(yintercept = drainage_level, color = col_observed,
              #linewidth = 0.3, linetype = "solid") +
-  labs(x = "Calendar Year AD", y = "Water Surface Elevation (MaSL)",
+  labs(x = "Calendar Year AD", y = "Water Surface Elevation (masl)",
        title = "Observed Tulare Lake Elevation — Drainage Periods Highlighted") +
   theme_paashi()
 fig_drainage
@@ -841,7 +846,7 @@ fig_flood <- ggplot(flood_gap_df, aes(x = gap)) +
            label = paste0("n = ", n_floods, " events over ~2,000 yr\n",
                           "Range: ", min(flood_gaps), "-", max(flood_gaps), " yr")) +
   labs(x = "Years Between Flood Events", y = "Count",
-       title = paste0("Flood Return Intervals (elev > ", flood_threshold, " m asl)")) +
+       title = paste0("Flood Return Intervals (elev > ", flood_threshold, " masl)")) +
   theme_paashi()
 fig_flood
 save_fig(fig_flood, "Figure_S5_Flood_Return.tiff", height_mm = 90)
@@ -931,7 +936,7 @@ p_blind_sst <- ggplot(blind_sst, aes(x = year_bp)) +
   geom_line(aes(y = elev_obs), color = col_observed, linewidth = 0.3, alpha = 0.4) +
   geom_line(aes(y = Estimate), color = col_model_line, linewidth = 0.5) +
   scale_x_reverse(labels = comma_format()) +
-  labs(x = "Years Before 2005", y = "Lake Elevation (MaSL)",
+  labs(x = "Years Before 2005", y = "Lake Elevation (masl)",
        title = "Blind Prediction: SSTs + ARMA(1,1)") +
   theme_paashi()
 
@@ -940,7 +945,7 @@ p_blind_pdo <- ggplot(blind_pdo, aes(x = year_bp)) +
   geom_line(aes(y = elev_obs), color = col_observed, linewidth = 0.3, alpha = 0.4) +
   geom_line(aes(y = Estimate), color = col_pdo_line, linewidth = 0.5) +
   scale_x_reverse(labels = comma_format()) +
-  labs(x = "Years Before 2005", y = "Lake Elevation (MaSL)",
+  labs(x = "Years Before 2005", y = "Lake Elevation (masl)",
        title = "Blind Prediction: PDO + ENSO Only (No SSTs)") +
   theme_paashi()
 
@@ -1112,7 +1117,7 @@ fig6_wb_sims <- ggplot() +
                "Observed"        = col_observed)) +
   guides(color = guide_legend(override.aes = list(
     alpha = 1, linewidth = c(0.5, 0.5)))) +
-  labs(x = "Calendar Year AD", y = "Water Surface Elevation (m asl)",
+  labs(x = "Calendar Year AD", y = "Water Surface Elevation (masl)",
        title = "Water Balance Simulations vs Observed",
        subtitle = paste0(n_draws_wb,
                          " posterior draws: (Q_in, Precip) ~ PDO + ENSO -> Adams physics -> elevation")) +
@@ -1164,14 +1169,18 @@ read.csv("Processed Data/Longarma_Predict.csv") -> Longarma_Predict
 ##Let's visualize the results quickly. We will do more in depth plotting later
 #ribbon = 95% prediction interval, dark line = posterior mean, gray = observed
 figS3_in_sample <- ggplot(Longarma_Predict, aes(x = year_bp)) +
-  geom_ribbon(aes(ymin = Q2.5, ymax = Q97.5),
-              fill = col_model_ribbon, alpha = 0.6) +
-  geom_line(aes(y = elev_obs), color = col_observed, linewidth = 0.4) +
-  geom_line(aes(y = Estimate), color = col_model_line, linewidth = 0.4) +
+  geom_ribbon(aes(ymin = Q2.5, ymax = Q97.5, fill = "95% prediction interval"),
+              alpha = 0.5) +
+  geom_line(aes(y = elev_obs, color = "Observed"), linewidth = 1) +
+  geom_line(aes(y = Estimate, color = "Posterior mean"), linewidth = 0.5) +
+  scale_color_manual(name = NULL,
+    values = c("Observed" = "gray70", "Posterior mean" = col_model_line)) +
+  scale_fill_manual(name = NULL,
+    values = c("95% prediction interval" = col_model_inner)) +
   scale_x_reverse(labels = comma_format()) +
-  labs(x = "Years Before 2005", y = "Lake Elevation (m asl)",
+  labs(x = "Years Before 2005", y = "Lake Elevation (masl)",
        title = "In-Sample Fit: ARMA with Observed Lagged Elevations",
-       subtitle = "Posterior mean (blue) tracks observed (gray); 95% PI shaded") +
+       subtitle = "Posterior mean tracks observed; 95% PI shaded") +
   theme_paashi()
 figS3_in_sample
 save_fig(figS3_in_sample, "Figure_S3_InSample_ARMA.tiff", height_mm = 90)
@@ -1229,7 +1238,7 @@ ggplot(hindcast, aes(x = year_bp)) +
   geom_line(aes(y = Fit_Est), color = col_model_line, linewidth = 0.5) +
   geom_line(aes(y = elev_obs), color = col_observed, linewidth = 0.5,
             alpha = 0.7, na.rm = TRUE) +
-  labs(x = "Years Before 2005", y = "Lake Elevation (MaSL)",
+  labs(x = "Years Before 2005", y = "Lake Elevation (masl)",
        title = "Lake Elevation Hindcast: Expected Trend and Prediction Intervals",
        subtitle = "Inner band (dark) = 95% CI for mean; Outer band (light) = 95% prediction interval; Dark = observed") +
   theme_paashi()
@@ -1281,7 +1290,7 @@ boundary", size = 3.0,
   scale_x_reverse(labels = comma_format(),
                   breaks = seq(0, 12000, by = 2000)) +
   coord_cartesian(ylim = c(50, 72)) +
-  labs(x = NULL, y = "Lake Elevation (m asl)",
+  labs(x = NULL, y = "Lake Elevation (masl)",
        title = "A. Holocene (0–12,000 yr BP)") +
   guides(fill = guide_legend(order = 1), color = guide_legend(order = 2)) +
   theme_paashi() +
@@ -1317,7 +1326,7 @@ greater uncertainty",
                   breaks = seq(0, 22000, by = 4000)) +
   coord_cartesian(ylim = c(50, 72)) +
   labs(x = "Years Before Present (cal yr BP)",
-       y = "Lake Elevation (m asl)",
+       y = "Lake Elevation (masl)",
        title = "B. Full reconstruction (0–23,000 yr BP)") +
   guides(fill = guide_legend(order = 1), color = guide_legend(order = 2)) +
   theme_paashi() +
@@ -1416,18 +1425,18 @@ arch_line <- combo %>%
 fig5a <- ggplot() +
   geom_hline(yintercept = rambla_highstand, linetype = "dotted",
              color = col_ref, linewidth = 0.4) +
-  annotate("text", x = 11400, y = rambla_highstand + 0.4,
-           label = "Top of Rambla highstand", hjust = 0,
+  annotate("text", x = 9000, y = rambla_highstand + 1.1,
+           label = "Top of Rambla highstand",
            size = 3.0, color = "gray30") +
   geom_segment(data = neg_horiz,
                aes(x = ybp_start, xend = ybp_end,
                    y = elev_start, yend = elev_end),
                linetype = "dashed", color = col_ref, linewidth = 0.45) +
-  annotate("text", x = 2800, y = 61.0, label = "shoreline trench",
+  annotate("text", x = 5000, y = 62.3, label = "shoreline trench",
            size = 3.0, color = "gray30", fontface = "italic") +
-  annotate("text", x = 2800, y = 56.5, label = "lake plain trench",
+  annotate("text", x = 1000, y = 56.9, label = "lake plain trench",
            size = 3.0, color = "gray30", fontface = "italic") +
-  annotate("text", x = 6000, y = 52.6,
+  annotate("text", x = 7000, y = 51.8,
            label = "depocenter core (Davis 1999)",
            size = 3.0, color = "gray30", fontface = "italic") +
   # Background bars/arrows/line — drawn BEFORE points so points sit on top.
@@ -1489,7 +1498,7 @@ fig5a <- ggplot() +
                   breaks = seq(0, 12000, by = 2000),
                   expand = expansion(mult = c(0.02, 0.01))) +
   coord_cartesian(xlim = c(11800, 0), ylim = c(50, 72)) +
-  labs(x = NULL, y = "Lake Elevation (m asl)",
+  labs(x = NULL, y = "Lake Elevation (masl)",
        title = "A. Negrini et al. (2006) Fig. 10 recreation",
        subtitle = paste0("Holocene lake-level history from digitized ",
                          "observations and trench horizons.")) +
@@ -1534,7 +1543,7 @@ fig5b <- ggplot() +
                   expand = expansion(mult = c(0.02, 0.01))) +
   coord_cartesian(xlim = c(11800, 0), ylim = c(48, 73)) +
   labs(x = "Years Before Present (cal yr BP)",
-       y = "Lake Elevation (m asl)",
+       y = "Lake Elevation (masl)",
        title = "B. Bayesian hindcast vs Negrini reconstruction") +
   theme_paashi() +
   theme(legend.position = "bottom")
