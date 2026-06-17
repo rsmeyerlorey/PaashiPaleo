@@ -55,7 +55,7 @@ col_arch         <- "#B85C38"   # terra cotta — archaeological reconstruction
 col_seki         <- "#D4930D"   # amber — Seki SST (California Margin)
 col_stott        <- "#1B998B"   # teal — Stott SST (W. Equatorial Pacific)
 col_davis5       <- "#5B7B9A"   # slate blue — Davis5 SST (Sea of Okhotsk)
-col_train_bg     <- "#FFF8F0"   # faint warm — training window background
+col_train_bg     <- "#FFF8F0"   # faint warm — calibration window background
 col_pleis_line   <- "gray25"    # Pleistocene-Holocene boundary
 col_pdo_line     <- "#B85C38"
 col_wb_draw      <- "#4682B4"
@@ -112,11 +112,11 @@ plot(clim$Year_B2005, clim$Isono_Int, main = "Isono (Japan, 15kya, ~20yr res) - 
 par(mfrow = c(1, 1))
 
 
-##Examine training data
+##Examine calibration data
 fig_elev_hist <- ggplot(clim, aes(x = elev)) +
   geom_histogram(bins = 300, fill = col_model_ribbon, color = "white", linewidth = 0.1) +
   labs(x = "Lake Elevation (masl)", y = "Count",
-       title = "Distribution of Observed Lake Elevation (Training Period)",
+       title = "Distribution of Observed Lake Elevation (Calibration Period)",
        subtitle = paste0("Mean = ", round(mean(clim$elev, na.rm = TRUE), 1),
                          " masl; SD = ", round(sd(clim$elev, na.rm = TRUE), 2),
                          " m")) +
@@ -490,7 +490,7 @@ loo(mld_Long, mld_Longar, mld_Longma, mld_Longarma, compare = TRUE)
 ```
 
 ### Model Diagnostics Figure (assisted by Claude Code)
-```{r figS1_diagnostics, fig.width = 7.5, fig.height = 8}
+```{r figS4_diagnostics, fig.width = 7.5, fig.height = 8}
 mld_Longarma <- readRDS("Models/mld_Longarma.rds")
 
 # Panel A: Trace plots
@@ -749,11 +749,11 @@ summary(mld_Long_skew)
 
 ```
 
-## Blind Prediction of Training Period
+## Blind Prediction of Calibration Period
 ```{r blind_training_pred}
-## Load the trained model, then predict the training period with elev set to NA. This shows what the model produces when it cannot observe elev values for ARMA, so similar to what we will do later for the hindcast, except that in this case we will be able to compare the prediction to observed values to see how accurate it is.
+## Load the fitted model, then predict the calibration period with elev set to NA. This shows what the model produces when it cannot observe elev values for ARMA, so similar to what we will do later for the hindcast, except that in this case we will be able to compare the prediction to observed values to see how accurate it is.
 
-## ARMA prediction: what do arma terms in training contribute when predicting new data? When predicting out-of-sample, brms starts ARMA at zero, so none of the actual observations matter beyond the training window. Each draw simulates its own ARMA trajectory from there. Because the simulated arma terms are zero-mean, ARMA contributes nothing to the MEAN of fitted(), so the predicted mean is purely SST-driven. ARMA does influence CIs when using predict(), since each draw simulates noise based on what it learned from the arma terms. Since ours are ar circa .8 and ma -.1, the noise stabilizes and doesn't make the CIs too extremely wide. So, ultimately, arma does not inform the predicted mean, but it does inform prediction of the noise around the mean. 
+## ARMA prediction: what do arma terms in the calibration window contribute when predicting new data? When predicting out-of-sample, brms starts ARMA at zero, so none of the actual observations matter beyond the calibration window. Each draw simulates its own ARMA trajectory from there. Because the simulated arma terms are zero-mean, ARMA contributes nothing to the MEAN of fitted(), so the predicted mean is purely SST-driven. ARMA does influence CIs when using predict(), since each draw simulates noise based on what it learned from the arma terms. Since ours are ar circa .8 and ma -.1, the noise stabilizes and doesn't make the CIs too extremely wide. So, ultimately, arma does not inform the predicted mean, but it does inform prediction of the noise around the mean. 
 # Note, this actually is handled in R by brms, not in Stan
 
 mld_Longarma <- readRDS("Models/mld_Longarma.rds")
@@ -775,11 +775,11 @@ fig_blind_train <- ggplot(blind_preds, aes(x = year_bp)) +
   geom_line(aes(y = Estimate), color = col_model_line, linewidth = 0.8) +
   scale_x_reverse(labels = comma_format()) +
   labs(x = "Years Before 2005", y = "Lake Elevation (masl)",
-       title = "Full Model: Blind Prediction of Training Period",
+       title = "Full Model: Blind Prediction of Calibration Period",
        subtitle = "SST-driven mean only; ARMA initialized at zero (same as hindcast)") +
   theme_paashi()
 fig_blind_train
-save_fig(fig_blind_train, "Figure_2_Blind_Training.tiff")
+save_fig(fig_blind_train, "Figure_2_Blind_Calibration.tiff")
 
 ```
 
@@ -862,7 +862,7 @@ save_fig(fig_flood, "Figure_S5_Flood_Return.tiff", height_mm = 90)
 # Stott_Int (~50-100yr resolution) = long-term mean of western equatorial Pacific, where ENSO operates; ~7 year cycles
 # Seki_Int (~400yr resolution) = long-term mean of NE Pacific / California margin, where PDO operates; ~20-30 year cycles
 
-# To quantify what our hindcast CIs represent, we fit three models on the ~1,000-year window where annually-resolved PDO and ENSO reconstructions overlap with our training data, then compare blind predictions (elev = NA, same as hindcast).
+# To quantify what our hindcast CIs represent, we fit three models on the ~1,000-year window where annually-resolved PDO and ENSO reconstructions overlap with our calibration data, then compare blind predictions (elev = NA, same as hindcast).
 # Sources: MacDonald & Case 2005 (PDO, 993-1996 CE), Li et al. 2011 (ENSO, 900-2002 CE)
 
 # Filter to rows where all predictors + PDO + ENSO are available (~1,000 years)
@@ -956,10 +956,10 @@ save_fig(p_blind_sst / p_blind_pdo, "Figure_S6_Blind_SST_vs_PDO.tiff", height_mm
 
 ## PDO is strongly related to lake elevation (+0.79m per unit [0.68, 0.91]), ENSO adds +0.20m per unit [0.16, 0.25]. LOO confirms PDO+ENSO improves fit substantially over SSTs alone (~122 elpd). Blind predictions show that PDO+ENSO produces year-to-year and decadal variation in the predicted mean, because it is annually-resolved Pacific climate data rather than a multi-century average.
 
-# NOTE, these PDO and ENSO records only cover ~1,000 years, so they cannot be used for the 23,000-year hindcast. The year-to-year and decadal variability they explain is what our hindcast prediction intervals represent.
+# NOTE, these PDO and ENSO records only cover ~1,000 years, so they cannot be used for the 20,000-year hindcast. The year-to-year and decadal variability they explain is what our hindcast prediction intervals represent.
 
 # Residual periodograms: does the ~40yr peak survive after removing climate forcing?
-# Panel A: SSTs + ARMA(1,1) residuals (from mld_Longarma, full training period)
+# Panel A: SSTs + ARMA(1,1) residuals (from mld_Longarma, full calibration period)
 arma_resids <- residuals(mld_Longarma, type = "ordinary")[, "Estimate"]
 sp_resid <- spec.pgram(arma_resids, spans = c(7, 7), plot = FALSE)
 sp_resid_period <- 1 / sp_resid$freq
@@ -1151,7 +1151,7 @@ for (j in 1:3) {
 ## Using Models to Predict Reality
 ```{r predictions}
 ## Now that we understand what our model can tell us and what our CIs represent, let's do an out of sample prediction using Longarma.
-#there are several ways to do a posterior prediction. posterior_predict() runs a full simulation based on a trained model, with thousands of draws, outputting every result. This is usually used to compare a model to actual observed results. predict() runs posterior_predict, but then just outputs the mean and upper/lower 95; it is most useful if you just want to go straight to plotting results. posterior_epred ("expected prediction") runs a simulation based on a trained model, gets the mean, then makes predictions based on the mean. This is typically used to make posterior predictions on large sets of new data, since it is significantly lighter than running a full posterior_predict, given that posterior_epred() is just relying on the mean of an already trained model, whereas posterior_predict() or predict() would run thousands of predictions on all the new data, then return the mean.Lastly, fitted() runs posterior_epred() and then summarizes it, much as predict does for posterior_predict.
+#there are several ways to do a posterior prediction. posterior_predict() runs a full simulation based on a fitted model, with thousands of draws, outputting every result. This is usually used to compare a model to actual observed results. predict() runs posterior_predict, but then just outputs the mean and upper/lower 95; it is most useful if you just want to go straight to plotting results. posterior_epred ("expected prediction") runs a simulation based on a fitted model, gets the mean, then makes predictions based on the mean. This is typically used to make posterior predictions on large sets of new data, since it is significantly lighter than running a full posterior_predict, given that posterior_epred() is just relying on the mean of an already fitted model, whereas posterior_predict() or predict() would run thousands of predictions on all the new data, then return the mean.Lastly, fitted() runs posterior_epred() and then summarizes it, much as predict does for posterior_predict.
 
 #First, let's use predict() to visualize how good the model is when arma has observations to work with. This will not have new data, it is just to compare the model against observations
 
@@ -1248,7 +1248,7 @@ ggplot(hindcast, aes(x = year_bp)) +
 ## Publication Figures
 
 ### Full Hindcast Figure (assisted by Claude Code)
-```{r fig4_hindcast, fig.width = 7.5, fig.height = 5}
+```{r fig3_hindcast, fig.width = 7.5, fig.height = 5}
 hindcast <- read.csv("Processed Data/Hindcast_Full.csv")
 training_boundary <- 2006
 pleis_holo        <- 11700
@@ -1274,7 +1274,7 @@ fig4a <- ggplot(hindcast_holo, aes(x = year_bp)) +
   geom_vline(xintercept = pleis_holo, linetype = "dotted",
              color = col_pleis_line, linewidth = 0.5) +
   annotate("text", x = training_boundary + 200, y = 69,
-           label = "Training
+           label = "Calibration
 boundary", size = 3.0, hjust = 1, color = "gray40") +
   annotate("text", x = pleis_holo - 200, y = 69,
            label = "Pleistocene-
@@ -1312,7 +1312,7 @@ fig4b <- ggplot(hindcast, aes(x = year_bp)) +
   geom_vline(xintercept = pleis_holo, linetype = "dotted",
              color = col_pleis_line, linewidth = 0.5) +
   annotate("text", x = 18000, y = 70,
-           label = "Model trained on Holocene data;
+           label = "Model calibrated on Holocene data;
 deeper predictions carry
 greater uncertainty",
            size = 3.0, color = "gray40", fontface = "italic") +
@@ -1327,7 +1327,7 @@ greater uncertainty",
   coord_cartesian(ylim = c(50, 72)) +
   labs(x = "Years Before Present (cal yr BP)",
        y = "Lake Elevation (masl)",
-       title = "B. Full reconstruction (0–23,000 yr BP)") +
+       title = "B. Full reconstruction (0–20,000 yr BP)") +
   guides(fill = guide_legend(order = 1), color = guide_legend(order = 2)) +
   theme_paashi() +
   theme(legend.position = "bottom")
@@ -1345,7 +1345,7 @@ Two-panel figure: (A) recreation based on data from Negrini et al. (2006) Fig. 1
 from digitized observations, deep-water clay intervals, and trench horizons;
 (B) Negrini's dashed reconstruction overlaid on our Bayesian hindcast.
 
-```{r fig5_negrini_comparison, fig.width = 7.5, fig.height = 7.5}
+```{r figS5_negrini_comparison, fig.width = 7.5, fig.height = 7.5}
 # --- Data ----------------------------------------------------------------
 hindcast  <- read.csv("Processed Data/Hindcast_Full.csv")
 combo     <- read.csv("Processed Data/Model_Outputs_Combined.csv")
