@@ -7,7 +7,7 @@ against an independent geological/archaeological reconstruction.
 
 This repository accompanies:
 
-> Meyer-Lorey and Pratt, "Bayesian Modeling Validates Archaeological and Paleoenvironmental Evidence for Pleistocene-Holocene Water Levels, Tulare Lake, California", in Journal of Archaeological Science Reports [in review]
+> Meyer-Lorey and Pratt, "Bayesian Modeling Validates Archaeological and Paleoenvironmental Evidence for Pleistocene-Holocene Water Levels, Tulare Lake, California", in Journal of Archaeological Science Reports [in review] preprint at: https://dx.doi.org/10.2139/ssrn.7021128
 
 ---
 
@@ -66,4 +66,6 @@ reconstructions, the Adams (2015) water-balance model, and the Negrini et al.
 
 ## License
 
-CC-BY-4.0
+Code in this dataset is released under the MIT License (see LICENSE.txt).
+Input data files are derived from previously published sources; rights remain with the original authors and publishers.
+See the dataset documentation and the associated article for full citations.
