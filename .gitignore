@@ -28,7 +28,10 @@ modify_doc.py
 
 # Exploratory / diagnostic models
 Models/mld_test_*.rds
-Models/mv_pdo.rds
+# ...except these three, which the main Rmd fits (PDO/ENSO comparison, Figure S7)
+!Models/mld_test_sdpsarma.rds
+!Models/mld_test_pdo_enso.rds
+!Models/mld_test_pdo_enso_only.rds
 Models/mv_sst.rds
 Models/climate_projections*.rds
 Models/climate_scenarios.rds
@@ -48,3 +51,38 @@ Raw Data/retry_failed.py
 Raw Data/retry_final6.py
 Raw Data/SST_Sources (1).md
 Raw Data/Sources Table (1).xlsx
+
+# Leftovers not produced by the main Rmd (exploratory runs, old models)
+Exploratory/
+Negrini Recreate/
+Models/Screening/
+Models/mld_Cal.rds
+Models/mld_SDPS_me.rds
+Models/mld_Top3*.rds
+Models/mv_sst_pub.rds
+Models/physics_hindcast_sims.rds
+Models/prop_fits_n20_*.rds
+Models/prop_fits_noarma_*.rds
+Models/prop_loo_*.rds
+Models/screen_Barron.rds
+Models/screen_Davis2.rds
+Models/screen_Davis4.rds
+Models/screen_Davis8.rds
+Models/screen_Isono.rds
+Processed Data/Draw_Diagnostics.csv
+Processed Data/Explore_Hindcast_Bands.csv
+Processed Data/Physics_Hindcast_Summary.csv
+Processed Data/SST_Correlation_Matrix.csv
+Processed Data/SST_Screening_LOO.csv
+Processed Data/Screening_Ranking.csv
+Processed Data/Shift_Profiles.csv
+Processed Data/Winning_Draw_15.csv
+Processed Data/SST_draws_n20_*.rds
+Processed Data/SST_draws_*_old.rds
+Processed Data/SST_interpolation_draws*.rds
+
+# Old-model files removed from the repo (kept locally)
+Models/mld_Long_skew.rds
+Models/mld_Longarma*.rds
+Processed Data/Longarma_Predict.csv
+Raw Data/SST_Citations_Corrected.md

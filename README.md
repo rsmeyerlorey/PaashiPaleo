@@ -3,11 +3,11 @@
 Code and data for a Bayesian hindcast of Paashi / Tulare Lake (San Joaquin
 Valley, California) surface elevation over roughly the last 20,000 years,
 reconstructed from Pacific sea-surface-temperature (SST) proxies and compared
-against an independent geological/archaeological reconstruction.
+against an independent geological/paleoenvironmental reconstruction.
 
 This repository accompanies:
 
-> Meyer-Lorey and Pratt, "Bayesian Modeling Validates Archaeological and Paleoenvironmental Evidence for Pleistocene-Holocene Water Levels, Tulare Lake, California", in Journal of Archaeological Science Reports [in review] preprint at: https://dx.doi.org/10.2139/ssrn.7021128
+> Meyer-Lorey and Pratt, "Bayesian Modeling Validates Paleoenvironmental Evidence for Pleistocene-Holocene Water Levels, Pa'ashi/Tulare Lake, California", in Journal of Archaeological Science Reports [in review]. Preprint of the original submission at: https://dx.doi.org/10.2139/ssrn.7021128
 
 ---
 
@@ -22,7 +22,8 @@ This repository accompanies:
 ```r
 install.packages(c(
   "tidyverse", "brms", "tidybayes", "bayesplot", "loo",
-  "patchwork", "scales", "ggrepel", "ggthemes", "maps", "ggnewscale"
+  "bridgesampling", "patchwork", "scales", "ggrepel", "ggthemes", "maps",
+  "ggnewscale"
 ))
 ```
 
@@ -47,22 +48,30 @@ install.packages(c(
 - `Raw Data/` - Input proxy and observation data (CSV) plus source citations
 - `Processed Data/` - output tables used to build the figures
 - `Models/` - Pre-fitted `brms` model objects (`.rds`)
-- `Figures/` - Created automatically when you run the `.Rmd`
+- `Figures/` - Created automatically when you run the `.Rmd` (Figure 1, the regional map, was made separately in ArcGIS Pro)
 
 ## Reproducibility notes
 
 - Pre-fitted models are included in `Models/`. Re-fitting the `brms` models
   from scratch is computationally intensive (minutes to hours); the saved `.rds`
   objects let you reproduce the published figures without refitting.
-- Model-fitting chunks use `seed = 2025`.
+- The uncertainty propagation is the slowest step. Its 50 model fits
+  (`Models/prop_fits_*.rds`), their bridge-sampling scores
+  (`Models/prop_logml_*.rds`) and the SST interpolation draws
+  (`Processed Data/SST_draws_*.rds`) are included, and the `.Rmd` reuses them
+  when present. Delete them only if you want to regenerate them from scratch.
+- Model-fitting chunks use `seed = 2025`; the SST interpolation draws use
+  `set.seed(2025)`.
 
 ## Data sources
 
-Proxy SST records (Seki et al. 2002; Stott et al. 2004, 2007; Davis et al.
-2020), the PDO (MacDonald & Case 2005) and ENSO (Li et al. 2011)
+Proxy SST records (final model: Seki et al. 2002; Stott et al. 2004, 2007;
+Pahnke et al. 2007; Seki et al. 2004 via Davis et al. 2020; plus the other
+screened candidates), the PDO (MacDonald & Case 2005) and ENSO (Li et al. 2011)
 reconstructions, the Adams (2015) water-balance model, and the Negrini et al.
-(2006) lake-level reconstruction. Full citations and accession details are in
-`Raw Data/SST_Citations_Corrected.md` and in the comments of the `.Rmd`.
+(2006) lake-level reconstruction. Full citations and DOIs are in
+`Raw Data/Data_Sources.csv`; details of how each is used are in the comments
+of the `.Rmd`.
 
 ## License
 
